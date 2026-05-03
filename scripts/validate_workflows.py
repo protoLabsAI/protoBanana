@@ -40,6 +40,7 @@ DEFAULT_BASE = os.environ.get("COMFYUI_BASE_URL", "http://localhost:8188")
 # the COMBO's current option list. Skip COMBO validation for these.
 _RUNTIME_SUBSTITUTED: set[tuple[str, str]] = {
     ("LoadImage", "image"),  # uploaded fresh per request via /upload/image
+    ("LoadImageMask", "image"),  # mask file uploaded fresh per request (inpaint)
 }
 
 

@@ -39,9 +39,10 @@ from protobanana.intents.keywords import (
     DEFAULT_SIZE,
     Operation,
     classify_operation,
+    extract_region_edit_parts,
     infer_size_from_prompt,
 )
-from protobanana.routes import bgremove, edit, gen, multiref
+from protobanana.routes import bgremove, edit, gen, inpaint, multiref, region_edit
 from protobanana.workflows.loader import WorkflowLoader
 
 # Truncate prompts in trace inputs so a 10K-char prompt doesn't bloat
@@ -167,19 +168,55 @@ class ProtoBananaProvider(CustomLLM):
         # up loading the wrong stem.
         workflow_stem = model.split("/", 1)[-1] or edit.DEFAULT_STEM
 
+        # OpenAI's /v1/images/edits accepts a `mask` multipart file in
+        # addition to `image`. LiteLLM forwards it via optional_params
+        # (and possibly **kwargs depending on version). When a mask is
+        # present, route to the inpaint workflow regardless of stem —
+        # mask presence is the strongest signal that the user wants
+        # masked inpainting, not whole-image edit.
+        mask_bytes: Optional[bytes] = None
+        raw_mask = opts.get("mask") or _kwargs.get("mask")
+        if raw_mask is not None:
+            try:
+                mask_bytes = self._coerce_image_to_bytes(raw_mask)
+            except (TypeError, ValueError):
+                mask_bytes = None
+
         # Resolve the dispatched route name up front for the trace.
         # Sticker showing up as "edit" was exactly the kind of mis-
         # routing the new dispatch logic prevents — surface it.
-        if workflow_stem.startswith("bgremove_"):
+        if mask_bytes is not None:
+            route_name = "inpaint"
+            # If the caller explicitly passed an inpaint stem, honour
+            # it; otherwise force the inpaint default so the right
+            # workflow gets loaded regardless of which alias they hit.
+            if not workflow_stem.startswith("inpaint_"):
+                workflow_stem = inpaint.DEFAULT_STEM
+        elif workflow_stem.startswith("bgremove_"):
             route_name = "bgremove"
         elif workflow_stem.startswith("multiref_"):
             route_name = "multiref"
+        elif workflow_stem.startswith("inpaint_"):
+            # Inpaint stem requested but no mask supplied — caller bug,
+            # but degrade gracefully to plain edit (model still has
+            # access to the image via TextEncodeQwenImageEditPlus).
+            log.warning(
+                "[protobanana] inpaint stem %s requested without mask; "
+                "falling back to edit", workflow_stem,
+            )
+            route_name = "edit"
+            workflow_stem = edit.DEFAULT_STEM
         else:
             route_name = "edit"
 
         with trace_span(
             "protobanana.aimage_edit",
-            input={"prompt": _truncate(prompt), "n": n, "init_size_bytes": len(init_bytes)},
+            input={
+                "prompt": _truncate(prompt),
+                "n": n,
+                "init_size_bytes": len(init_bytes),
+                "mask_size_bytes": len(mask_bytes) if mask_bytes is not None else 0,
+            },
             metadata={
                 "model": model,
                 "workflow_stem": workflow_stem,
@@ -188,7 +225,19 @@ class ProtoBananaProvider(CustomLLM):
         ) as span:
             async with self._client(api_base, client, timeout_s) as cy:
                 async def _one() -> str:
-                    if route_name == "bgremove":
+                    if route_name == "inpaint":
+                        img_bytes = await inpaint.run(
+                            cy,
+                            self._loader,
+                            prompt=prompt,
+                            init_image_bytes=init_bytes,
+                            mask_bytes=mask_bytes,  # type: ignore[arg-type]
+                            negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
+                            seed=opts.get("seed"),
+                            workflow_stem=workflow_stem,
+                            timeout_s=max(timeout_s, 240.0),
+                        )
+                    elif route_name == "bgremove":
                         img_bytes = await bgremove.run(
                             cy,
                             self._loader,
@@ -291,6 +340,30 @@ class ProtoBananaProvider(CustomLLM):
                         self._loader,
                         prompt=prompt,
                         init_image_bytes_list=init_images,
+                        seed=opts.get("seed"),
+                        timeout_s=max(timeout_s, 240.0),
+                    )
+                elif op == Operation.REGION_EDIT:
+                    parts = extract_region_edit_parts(prompt)
+                    if parts is None:
+                        # Splitter failed; fall back to using the full prompt
+                        # for both grounding AND edit. SAM 3 is forgiving;
+                        # the model has visual conditioning either way.
+                        grounding_text, edit_prompt = prompt, prompt
+                        parent.update(metadata={"region_edit_split": "fallback"})
+                    else:
+                        grounding_text, edit_prompt = parts
+                        parent.update(metadata={
+                            "region_edit_split": "ok",
+                            "grounding_text": grounding_text,
+                            "edit_prompt": edit_prompt,
+                        })
+                    img_bytes = await region_edit.run(
+                        cy,
+                        self._loader,
+                        grounding_text=grounding_text,
+                        edit_prompt=edit_prompt,
+                        init_image_bytes=init_images[0],
                         seed=opts.get("seed"),
                         timeout_s=max(timeout_s, 240.0),
                     )

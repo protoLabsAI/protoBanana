@@ -9,6 +9,6 @@ This keeps the provider thin: it picks the route, calls run(), returns bytes.
 Adding a new operation = new module + intent keyword + workflow JSON.
 """
 
-from protobanana.routes import bgremove, edit, gen, multiref
+from protobanana.routes import bgremove, edit, gen, inpaint, multiref
 
-__all__ = ["bgremove", "edit", "gen", "multiref"]
+__all__ = ["bgremove", "edit", "gen", "inpaint", "multiref"]

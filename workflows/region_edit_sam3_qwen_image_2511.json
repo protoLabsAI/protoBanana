@@ -1,0 +1,96 @@
+{
+  "_doc": "Agent-driven text-grounded region edit. Caller supplies init image + grounding_text (the THING to mask) + edit_prompt (what it should become). SAM 3 generates the mask from text, Qwen-Image-Edit-2511 inpaints inside. ImageCompositeMasked at the end preserves outside-mask pixels exactly. The agent owns the routing — user just types 'change the man's tie to red' and the chat path classifies, splits the prompt, and calls this workflow.",
+  "3": {
+    "inputs": {
+      "seed": 0,
+      "steps": 20,
+      "cfg": 4.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": ["37", 0],
+      "positive": ["22", 0],
+      "negative": ["22", 1],
+      "latent_image": ["22", 2]
+    },
+    "class_type": "KSampler"
+  },
+  "4": {
+    "inputs": {"image": "init.png"},
+    "class_type": "LoadImage"
+  },
+  "30": {
+    "inputs": {
+      "image": ["4", 0],
+      "prompt": "the thing to mask",
+      "output_mode": "Merged",
+      "confidence_threshold": 0.3,
+      "device": "GPU"
+    },
+    "class_type": "SAM3Segment"
+  },
+  "31": {
+    "inputs": {"mask": ["30", 1], "expand": 8, "tapered_corners": true},
+    "class_type": "GrowMask"
+  },
+  "6": {
+    "inputs": {
+      "prompt": "the edit instruction",
+      "clip": ["38", 0],
+      "vae": ["39", 0],
+      "image1": ["4", 0]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus"
+  },
+  "7": {
+    "inputs": {
+      "prompt": "low quality, blurry, distorted",
+      "clip": ["38", 0],
+      "vae": ["39", 0],
+      "image1": ["4", 0]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus"
+  },
+  "22": {
+    "inputs": {
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "vae": ["39", 0],
+      "pixels": ["4", 0],
+      "mask": ["31", 0],
+      "noise_mask": true
+    },
+    "class_type": "InpaintModelConditioning"
+  },
+  "8": {
+    "inputs": {"samples": ["3", 0], "vae": ["39", 0]},
+    "class_type": "VAEDecode"
+  },
+  "23": {
+    "inputs": {
+      "destination": ["4", 0],
+      "source": ["8", 0],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": ["30", 1]
+    },
+    "class_type": "ImageCompositeMasked"
+  },
+  "9": {
+    "inputs": {"filename_prefix": "protobanana-region-edit", "images": ["23", 0]},
+    "class_type": "SaveImage"
+  },
+  "37": {
+    "inputs": {"unet_name": "qwen_image_edit_2511_fp8mixed.safetensors", "weight_dtype": "default"},
+    "class_type": "UNETLoader"
+  },
+  "38": {
+    "inputs": {"clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors", "type": "qwen_image"},
+    "class_type": "CLIPLoader"
+  },
+  "39": {
+    "inputs": {"vae_name": "qwen_image_vae.safetensors"},
+    "class_type": "VAELoader"
+  }
+}
