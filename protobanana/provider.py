@@ -33,6 +33,7 @@ from litellm.types.utils import (
     Usage,
 )
 
+from protobanana import agent as _agent
 from protobanana._tracing import trace_span
 from protobanana.client import ComfyUIClient
 from protobanana.intents.keywords import (
@@ -317,6 +318,30 @@ class ProtoBananaProvider(CustomLLM):
             },
             metadata={"model": model, "n_messages": len(messages)},
         ) as parent:
+            # Agent-first dispatch (when configured). The LLM is the
+            # router AND the chat brain — it decides whether to call an
+            # image tool, chain several, or just reply conversationally.
+            # Returning None means the agent is disabled or its first
+            # LM call failed; we fall back to the keyword classifier
+            # path so the package keeps working without an LM.
+            if _agent.is_enabled():
+                parent.update(metadata={"path": "agent"})
+                async with self._client(api_base, client, timeout_s) as cy:
+                    agent_content = await _agent.run(
+                        messages=messages,
+                        init_images=init_images,
+                        comfy_client=cy,
+                        loader=self._loader,
+                        seed=opts.get("seed"),
+                        timeout_s=timeout_s,
+                    )
+                if agent_content is not None:
+                    return self._chat_response(model_response, model, agent_content)
+                # agent_content is None — agent disabled mid-call OR
+                # first-iter failure. Drop to keyword path.
+                parent.update(metadata={"agent_fallback": True})
+
+            parent.update(metadata={"path": "keyword"})
             with trace_span(
                 "protobanana.classify_operation",
                 input={"prompt": _truncate(prompt, 200)},
