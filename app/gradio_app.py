@@ -599,19 +599,58 @@ def fn_outpaint(
     return img, info
 
 
+def _editor_to_init_and_mask(editor_value):
+    """Pull (init RGB image, mask RGB image) from a gr.ImageEditor value.
+
+    gr.ImageEditor returns {"background": PIL, "layers": [PIL...],
+    "composite": PIL}. The user paints brush strokes onto layer 0; the
+    layer is RGBA where the alpha channel encodes the paint coverage.
+    We threshold alpha → grayscale mask (white = brushed = repaint,
+    black = untouched = preserve), then convert to RGB so it serializes
+    cleanly through the OpenAI multipart endpoint.
+    """
+    if not editor_value:
+        return None, None
+    bg = editor_value.get("background")
+    layers = editor_value.get("layers") or []
+    if bg is None:
+        return None, None
+    init_rgb = bg.convert("RGB") if bg.mode != "RGB" else bg
+    if not layers:
+        return init_rgb, None
+    # Combine all layers' alpha so multiple brush strokes (Gradio splits
+    # them into separate layers when the user changes color/tool) all
+    # contribute to the same mask.
+    composite_alpha = None
+    for layer in layers:
+        if layer.mode != "RGBA":
+            layer = layer.convert("RGBA")
+        alpha = layer.split()[-1]
+        if composite_alpha is None:
+            composite_alpha = alpha
+        else:
+            from PIL import ImageChops
+            composite_alpha = ImageChops.lighter(composite_alpha, alpha)
+    if composite_alpha is None:
+        return init_rgb, None
+    # Threshold so anything painted (alpha > 32) becomes pure white.
+    mask_l = composite_alpha.point(lambda v: 255 if v > 32 else 0, mode="L")
+    return init_rgb, mask_l.convert("RGB")
+
+
 def fn_inpaint(
-    init_image,
-    mask_image,
+    editor_value,
     prompt: str,
     seed: float,
     gateway_url: str,
     api_key: str,
     model: str,
 ):
+    init_image, mask_image = _editor_to_init_and_mask(editor_value)
     if init_image is None:
-        raise gr.Error("Upload the source image.")
+        raise gr.Error("Upload (or paste) a source image into the editor.")
     if mask_image is None:
-        raise gr.Error("Upload the mask (white = repaint, black = preserve).")
+        raise gr.Error("Brush over the region you want repainted (white area).")
     if not prompt:
         raise gr.Error("Enter a prompt describing what to paint into the mask.")
     client = _client(gateway_url, api_key)
@@ -864,13 +903,26 @@ def build_app() -> gr.Blocks:
         # ---- Tab: Inpaint --------------------------------------------
         with gr.Tab("🩹 Inpaint"):
             gr.Markdown(
-                "Brushed-mask inpaint. Upload the source image and a mask PNG (white = repaint, "
-                "black = preserve). The prompt describes what should appear inside the masked region."
+                "Brushed-mask inpaint. Drop in (or paste from clipboard) a source image, "
+                "then **brush** over the area you want repainted — the painted region becomes "
+                "the mask automatically. The prompt describes what should appear there."
             )
             with gr.Row():
                 with gr.Column(scale=1):
-                    ip_init = gr.Image(label="Source image", type="pil")
-                    ip_mask = gr.Image(label="Mask (white = repaint)", type="pil", image_mode="RGBA")
+                    ip_editor = gr.ImageEditor(
+                        label="Source + brush mask",
+                        type="pil",
+                        height=512,
+                        layers=False,
+                        sources=("upload", "clipboard"),
+                        brush=gr.Brush(
+                            colors=["#ff00ff"],
+                            color_mode="fixed",
+                            default_size=40,
+                        ),
+                        eraser=gr.Eraser(default_size=40),
+                        transforms=(),
+                    )
                     ip_prompt = gr.Textbox(
                         label="Prompt", lines=2,
                         placeholder="a glass apple sitting on the table",
@@ -884,7 +936,7 @@ def build_app() -> gr.Blocks:
             ip_btn.click(
                 fn=fn_inpaint,
                 inputs=[
-                    ip_init, ip_mask, ip_prompt, ip_seed,
+                    ip_editor, ip_prompt, ip_seed,
                     gateway_url, api_key, model_inpaint,
                 ],
                 outputs=[ip_out, ip_info],
