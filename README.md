@@ -13,8 +13,8 @@
 > waving hello, simple white background"._
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-Phase%201-orange.svg)](PHASES.md)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/) [![Docs](https://img.shields.io/badge/docs-vitepress-emerald.svg)](https://protolabsai.github.io/protoBanana/)
+[![Status](https://img.shields.io/badge/status-Phase%207-blue.svg)](PHASES.md)
+[![Tests](https://img.shields.io/badge/tests-99%20passing-brightgreen.svg)](tests/) [![Docs](https://img.shields.io/badge/docs-vitepress-emerald.svg)](https://protolabsai.github.io/protoBanana/)
 
 ## What it is
 
@@ -23,13 +23,19 @@ One gateway alias drives the full conversational image experience:
 - `protolabs/qwen-image` — text-to-image (`/v1/images/generations`)
 - `protolabs/qwen-image-edit` — image + instruction (`/v1/images/edits`)
 - `protolabs/qwen-image-chat` — multi-turn `"draw → now make it blue"`,
-  multi-reference compose, sticker / background removal — auto-routed per
-  turn from a chat-completions message stream
+  multi-reference compose, region edit, background removal, outpaint —
+  routed by an LLM **agent** that owns the chat surface
 
-Backed by Qwen-Image-2512 (gen) + Qwen-Image-Edit-2511 (edit, multi-ref) +
-BiRefNet/RMBG-2.0 (background removal). Phase 4-7 add Florence-2 + SAM 2.1
-(text-region edit), LanPaint (inpaint with brushed mask), outpaint, and an
-LM-based intent classifier.
+The chat path is **agent-driven**: an LLM (default `protolabs/fast` =
+Qwen3.6-35B-A3B-FP8) decides whether to respond conversationally, call
+an image tool, or chain multiple tools. Conversational replies, clarifying
+questions, and `"remove the bg, then put a sunset behind"` chains all
+work — see [docs/agent.md](docs/agent.md). Falls back to a deterministic
+keyword classifier when no LLM endpoint is configured.
+
+Backed by Qwen-Image-2512 (gen) + Qwen-Image-Edit-2511 (edit, multi-ref,
+inpaint, outpaint, region edit) + BiRefNet/RMBG-2.0 (sticker) + SAM 3
+(text→mask grounding for region edit). All seven phases shipped.
 
 ## Why this exists
 
@@ -47,23 +53,27 @@ running entirely on local GPUs through your own LiteLLM gateway.
 | | nano-banana 2 | protoBanana (Phase 1) |
 |---|:-:|:-:|
 | Operation auto-routing per chat turn | ✓ | ✓ |
+| Conversational replies + clarifying questions | ✓ | ✓ (agent path) |
+| Chained operations in one chat turn | ✓ | ✓ (agent calls tools in sequence) |
 | Text-to-image | ✓ | ✓ |
 | Single-image instruction edit | ✓ | ✓ |
 | Multi-reference compose | up to 14 refs | up to **3** (Qwen-Image-Edit cap) |
-| Background removal / sticker | ✓ | ✓ (Phase 2) |
-| Text-region edit ("change the man's tie") | ✓ | Phase 4 (Florence-2 + SAM 2.1) |
-| Inpaint with brushed mask | ✓ | Phase 5 (LanPaint) |
-| Outpaint | ✓ | Phase 6 |
+| Background removal / sticker | ✓ | ✓ |
+| Text-region edit (`"change the man's tie"`) | ✓ | ✓ (SAM 3 text→mask) |
+| Inpaint with provided mask | ✓ | ✓ (`/v1/images/edits` + mask) |
+| Outpaint | ✓ | ✓ (`"extend left"`, `"make this wider"`) |
 | Hosted | yes | **no** — all local |
 | Cost per image | metered | electricity |
 
-See [PHASES.md](PHASES.md) for what's done vs queued.
+See [PHASES.md](PHASES.md) for the per-phase rationale.
 
 ## Quickstart
 
 ```bash
-# 1. Install into your LiteLLM gateway environment
-pip install git+https://github.com/protoLabsAI/protoBanana.git
+# 1. Install into your LiteLLM gateway environment.
+#    [tracing] pulls langfuse v2 (LiteLLM-compatible).
+#    [agent] pulls openai client for the chat agent.
+pip install 'protobanana[tracing,agent] @ git+https://github.com/protoLabsAI/protoBanana.git'
 
 # 2. Add to LiteLLM config.yaml:
 model_list:
@@ -86,12 +96,22 @@ litellm_settings:
 # 3. Mount the workflows dir into the gateway container at /app/workflows
 #    (or set PROTOBANANA_WORKFLOWS_DIR)
 
-# 4. Hit it like any OpenAI image-gen endpoint
+# 4. (Optional but recommended) Enable the chat agent:
+#    PROTOBANANA_AGENT_BASE=http://localhost:4000/v1   # gateway calls itself
+#    PROTOBANANA_AGENT_KEY=$LITELLM_MASTER_KEY
+#    PROTOBANANA_AGENT_MODEL=protolabs/fast            # or protolabs/smart
+
+# 5. Hit it like any OpenAI chat endpoint
 curl -X POST http://your-gateway:4000/v1/chat/completions \
   -H "Authorization: Bearer $KEY" \
   -d '{"model":"protolabs/qwen-image-chat","messages":[
-    {"role":"user","content":"a cat in a hat, watercolor, portrait"}
+    {"role":"user","content":"a cat in a hat, watercolor"}
   ]}'
+
+# Then continue the conversation:
+#   {"role":"user","content":"make it a bowling cap"}
+# → agent picks region_edit("the hat" → "a bowling cap"), preserves
+#   everything else pixel-perfect.
 ```
 
 Returns an assistant message with a markdown-embedded `data:image/png;base64,...`
@@ -110,13 +130,20 @@ See [docs/installation.md](docs/installation.md) for the full setup
                           │
                           ▼
                   ProtoBananaProvider
-                  (intent classifier)
                           │
-            ┌─────────────┼─────────────┬──────────────┐
-            ▼             ▼             ▼              ▼
-           gen          edit         multiref       bgremove
-            │             │             │              │
-            └─────────────┴─────────────┴──────────────┘
+                ┌─────────┴──────────┐
+                ▼                    ▼
+        chat agent loop      keyword classifier
+        (LLM picks tool)     (fallback when no LM)
+                │                    │
+                └─────────┬──────────┘
+                          ▼
+       ┌──────┬──────┬──────┬──────┬──────┬──────┐
+       ▼      ▼      ▼      ▼      ▼      ▼      ▼
+      gen   edit  region multi  bgremove inpaint outpaint
+                  edit   ref
+       │      │      │      │      │      │      │
+       └──────┴──────┴──────┴──────┴──────┴──────┘
                           │
                           ▼
                     ComfyUIClient
@@ -125,10 +152,15 @@ See [docs/installation.md](docs/installation.md) for the full setup
                           ▼
                        ComfyUI
             (Qwen-Image-2512 / Qwen-Image-Edit-2511 /
-                 BiRefNet / RMBG-2.0 / [Phase 4-6: Florence-2, SAM 2.1, LanPaint])
+                 BiRefNet / RMBG-2.0 / SAM 3)
 ```
 
-See [docs/architecture.md](docs/architecture.md) for the full breakdown.
+The chat agent is the default; the keyword classifier kicks in only when
+`PROTOBANANA_AGENT_BASE` is unset or the LLM endpoint fails. Either path
+calls the same six route modules.
+
+See [docs/architecture.md](docs/architecture.md) for the full breakdown
+and [docs/agent.md](docs/agent.md) for the agent loop in detail.
 
 ## Test/eval UI
 
@@ -149,16 +181,19 @@ GATEWAY_URL=http://your-gateway:4000/v1 GATEWAY_API_KEY=sk-... python -m app
 |---|---|
 | [PROPOSAL.md](PROPOSAL.md) | The strategic system design + why-this-shape |
 | [PHASES.md](PHASES.md) | The 7-phase roadmap with status, models needed, acceptance criteria |
-| [JOURNEY.md](JOURNEY.md) | How we got here — the full backfill (research → broken integrations → pivot to gateway) |
+| [JOURNEY.md](JOURNEY.md) | How we got here — the full backfill (research → broken integrations → gateway → agent) |
 | [HOWTO.md](HOWTO.md) | User-facing guide: prompting recipes, multi-ref tricks, intent keywords |
 | [app/README.md](app/README.md) | Gradio test/eval UI — local + HF Space |
 | [docs/installation.md](docs/installation.md) | Full setup from a clean machine |
 | [docs/operating.md](docs/operating.md) | Day-2 ops: GPU planning, model swaps, troubleshooting |
 | [docs/architecture.md](docs/architecture.md) | Component breakdown + extension points |
+| [docs/agent.md](docs/agent.md) | The tool-use chat agent — loop, tools, env, fallback, multi-step examples |
 | [docs/workflows-cookbook.md](docs/workflows-cookbook.md) | How to add a new ComfyUI workflow |
-| [docs/intent-router.md](docs/intent-router.md) | How requests route to operations |
+| [docs/intent-router.md](docs/intent-router.md) | How the keyword fallback path routes requests |
 | [docs/gradio-app.md](docs/gradio-app.md) | Test/eval UI architecture + HF Space deploy |
 | [docs/api.md](docs/api.md) | Client-facing API reference |
+| [docs/observability.md](docs/observability.md) | Langfuse tracing — what's captured, env, recommended views |
+| [docs/validating-workflows.md](docs/validating-workflows.md) | Static workflow validator + e2e smoke (pre-merge gate) |
 | [docs/benchmarks.md](docs/benchmarks.md) | Quality + latency methodology |
 | [DECISIONS.md](DECISIONS.md) | Architectural decision records |
 | [CHANGELOG.md](CHANGELOG.md) | Per-version log |

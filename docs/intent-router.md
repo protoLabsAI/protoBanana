@@ -15,11 +15,20 @@ need to decide:
 2. **How to size it** — explicit size if provided; otherwise inferred
 3. **Which workflow** — each operation maps to one (rarely more) workflow
 
-The router is deterministic — same inputs always give same operation.
-Phase 7 adds an **optional** LM-based second pass for the ambiguous
-EDIT/GEN catch-alls; it never fires for the high-confidence keyword
-ops, and it's off by default. See
-[Observability](observability) for enabling it.
+The keyword router is deterministic — same inputs always give same
+operation. **It is the *fallback* path on the chat endpoint.**
+
+The default chat path is the [tool-use agent](agent) — the LLM (default
+`protolabs/fast`) reads the conversation and decides which tool (if
+any) to call. The keyword router below kicks in only when:
+
+- `PROTOBANANA_AGENT_BASE` isn't set (agent disabled), OR
+- the openai client isn't installed, OR
+- the agent's first LM call fails.
+
+This page documents the keyword router's behaviour for that fallback
+case — and for `/v1/images/{generations,edits}`, which never invokes
+the agent at all (those endpoints have no chat history to reason over).
 
 ---
 

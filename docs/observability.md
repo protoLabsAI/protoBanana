@@ -33,6 +33,28 @@ For `/v1/images/generations` and `/v1/images/edits` the parent span is `protoban
 
 Image bytes are summarized as `{size_bytes, sha256_12}` rather than logged in full — full payloads bloat traces and are reproducible from the request anyway.
 
+## Status today: LiteLLM-level traces only
+
+The `[tracing]` extra is pinned to `langfuse>=2.59,<3` to coexist with
+LiteLLM's own success_callback Langfuse integration (LiteLLM hard-pins
+v2.59.7 and constructs `Langfuse(sdk_integration=...)`, a kwarg v3
+removed). Our `_tracing.py` uses v3's `get_client()` API; on v2 the
+import fails and our spans no-op gracefully.
+
+**What this means in practice:**
+
+- ✅ LiteLLM's per-request Langfuse traces (model, input, output,
+  latency, token counts) emit normally — these are the most-asked-for
+  observability and they work today.
+- ⏸ Our **fine-grained sub-spans** (workflow_stem, prompt_id,
+  comfyui.wait_for_completion, agent iteration tree, tool call
+  metadata) are deferred until a v2 adapter ships in `_tracing.py`.
+
+If you're running protoBanana standalone (no LiteLLM in the same
+venv) you can install langfuse v3 manually and the fine-grained spans
+will emit. Inside the protoLabs gateway image, v2 is the default for
+LiteLLM compatibility.
+
 ## Enabling tracing
 
 ### 1. Install with the `tracing` extra
@@ -41,7 +63,7 @@ Image bytes are summarized as `{size_bytes, sha256_12}` rather than logged in fu
 pip install 'protobanana[tracing]'
 ```
 
-This pulls in `langfuse>=3.0,<4` plus its OpenTelemetry transitive deps.
+This pulls in `langfuse>=2.59,<3`.
 
 ### 2. Export Langfuse credentials
 
