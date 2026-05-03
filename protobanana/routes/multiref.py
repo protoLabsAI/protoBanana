@@ -1,31 +1,89 @@
-"""Multi-reference compose (2-3 images). Workflow stem: `multiref_qwen_image_2511`.
+"""Multi-reference compose. Workflow stem: `multiref_qwen_image_2511`.
 
-Qwen-Image-Edit-2511 supports up to 3 reference images via
-TextEncodeQwenImageEditPlus's image1/image2/image3 inputs. Each ref is
-loaded → scaled → fed into the same Plus encoder so the model sees all of
-them as conditioning (not just the first one as a latent init, which was
-the prior bug).
+Background — what we tried first and why it didn't work
+-------------------------------------------------------
 
-Convention (matches multiref_qwen_image_2511.json):
-  Node IDs 100, 101, 102 = LoadImage for ref 1, 2, 3
-  Node "6" TextEncodeQwenImageEditPlus = positive (image1/2/3 + prompt)
-  Node "7" TextEncodeQwenImageEditPlus = negative (image1/2/3 + neg prompt)
-  Node "3" KSampler                    = seed
+Qwen-Image-Edit-2511's `TextEncodeQwenImageEditPlus` node exposes
+`image1`/`image2`/`image3` inputs and the model card bills it as multi-
+reference. In practice, the encoder weights `image1` overwhelmingly:
+empirical color-bias tests with two distinct refs (warm/cool) showed
+the additional slots have effectively zero contribution to the output
+regardless of the latent strategy (ref1-as-latent vs empty-latent),
+denoise, cfg, or how aggressively the prompt named ref2.
 
-Refs > 3 are silently truncated; the model degrades on >3 anyway.
+The one shape that actually composes both refs: stitch them into a
+single grid image and pass that as `image1`. Then the model treats the
+whole thing as one "look" to draw from. So that's what we do here.
+
+Workflow shape
+--------------
+
+The bundled workflow ships with one LoadImage (100), one
+ImageScaleToTotalPixels (110), TextEncodeQwenImageEditPlus on nodes
+6 (positive) and 7 (negative) wired only to `image1`, an
+EmptySD3LatentImage (116) for the latent, and KSampler at denoise=1.0
+so the model regenerates from scratch using the conditioning. The 2x
+or 3x grid passed in via `image1` carries the references.
+
+Refs > 4 are silently truncated; the grid would just become unreadably
+small.
 """
 
 from __future__ import annotations
 
+import io
 import random
 from typing import Any
+
+from PIL import Image
 
 from protobanana._tracing import trace_span
 from protobanana.client import ComfyUIClient
 from protobanana.workflows.loader import WorkflowLoader
 
 DEFAULT_STEM = "multiref_qwen_image_2511"
-MAX_REFS = 3
+MAX_REFS = 4
+GRID_TILE = 768  # each ref is letterboxed into GRID_TILE x GRID_TILE
+
+
+def _grid_concat(refs: list[bytes]) -> bytes:
+    """Stitch N refs into a single horizontal/grid PNG.
+
+    Each ref is letterboxed into a GRID_TILE×GRID_TILE square (preserve
+    aspect, pad black) so refs with different aspect ratios don't get
+    distorted. Layout:
+
+      1 ref  → 1 wide          (passthrough wrapped in a square tile)
+      2 refs → 2x1 horizontal
+      3 refs → 3x1 horizontal
+      4 refs → 2x2
+
+    The downstream ImageScaleToTotalPixels normalizes to 1.05 MP so the
+    final input to the model is always roughly the same size.
+    """
+    n = len(refs)
+    if n == 1:
+        cols, rows = 1, 1
+    elif n == 2:
+        cols, rows = 2, 1
+    elif n == 3:
+        cols, rows = 3, 1
+    else:
+        cols, rows = 2, 2
+
+    grid = Image.new("RGB", (cols * GRID_TILE, rows * GRID_TILE), (0, 0, 0))
+    for idx, raw in enumerate(refs[: cols * rows]):
+        tile = Image.open(io.BytesIO(raw)).convert("RGB")
+        # Letterbox into a square tile (preserve aspect).
+        tile.thumbnail((GRID_TILE, GRID_TILE), Image.LANCZOS)
+        cell = Image.new("RGB", (GRID_TILE, GRID_TILE), (0, 0, 0))
+        cell.paste(tile, ((GRID_TILE - tile.width) // 2, (GRID_TILE - tile.height) // 2))
+        c, r = idx % cols, idx // cols
+        grid.paste(cell, (c * GRID_TILE, r * GRID_TILE))
+
+    buf = io.BytesIO()
+    grid.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def substitute(
@@ -34,40 +92,11 @@ def substitute(
     prompt: str,
     negative_prompt: str,
     seed: int,
-    image_filenames: list[str],
+    grid_filename: str,
 ) -> dict[str, Any]:
-    """Populate LoadImage slots and prune unused ones.
-
-    The bundled workflow ships with 3 placeholder LoadImage nodes
-    (100/101/102), 3 ImageScale nodes (110/111/112), and image1/2/3
-    inputs on both encoders (6 + 7). When the caller supplies fewer
-    than MAX_REFS images we MUST prune the unused slots — otherwise
-    ComfyUI tries to load the placeholder filenames (`ref2.png`,
-    `ref3.png`) from its input dir and fails with `Invalid image
-    file`. TextEncodeQwenImageEditPlus's image2/image3 inputs are
-    optional, so dropping them from the encoder is safe.
-    """
-    refs = image_filenames[:MAX_REFS]
-    n_refs = len(refs)
-
-    # Populate the slots we have.
-    for slot, fname in enumerate(refs, start=1):
-        node_id = str(100 + slot - 1)  # 100, 101, 102
-        if node_id in workflow and workflow[node_id].get("class_type") == "LoadImage":
-            workflow[node_id]["inputs"]["image"] = fname
-
-    # Prune the slots we don't (LoadImage + ImageScale pairs + the
-    # corresponding `image_N` input on each encoder).
-    for unused_slot in range(n_refs + 1, MAX_REFS + 1):
-        load_id = str(100 + unused_slot - 1)
-        scale_id = str(110 + unused_slot - 1)
-        workflow.pop(load_id, None)
-        workflow.pop(scale_id, None)
-        for enc_id in ("6", "7"):
-            enc = workflow.get(enc_id)
-            if enc and isinstance(enc.get("inputs"), dict):
-                enc["inputs"].pop(f"image{unused_slot}", None)
-
+    """Wire the uploaded grid into LoadImage(100) and stamp prompts/seed."""
+    if "100" in workflow and workflow["100"].get("class_type") == "LoadImage":
+        workflow["100"]["inputs"]["image"] = grid_filename
     _set_prompt(workflow, "6", prompt)
     _set_prompt(workflow, "7", negative_prompt)
     if "3" in workflow and workflow["3"].get("class_type") == "KSampler":
@@ -102,26 +131,30 @@ async def run(
         raise ValueError("multiref requires at least one init image")
     seed = seed if seed is not None else random.randint(0, 2**32 - 1)
 
-    # Upload each ref to ComfyUI's input dir; collect filenames in order
     refs = init_image_bytes_list[:MAX_REFS]
+
     with trace_span(
-        "comfyui.upload",
+        "multiref.grid_concat",
         metadata={
             "n_refs": len(refs),
             "size_bytes_total": sum(len(b) for b in refs),
         },
+    ) as concat_span:
+        grid_bytes = _grid_concat(refs)
+        concat_span.update(metadata={"grid_bytes": len(grid_bytes)})
+
+    with trace_span(
+        "comfyui.upload",
+        metadata={"grid_bytes": len(grid_bytes)},
     ):
-        filenames: list[str] = []
-        for idx, image_bytes in enumerate(refs, start=1):
-            fname = await client.upload_image(image_bytes, filename=f"ref{idx}.png")
-            filenames.append(fname)
+        grid_filename = await client.upload_image(grid_bytes, filename="ref_grid.png")
 
     wf = substitute(
         loader.load(workflow_stem),
         prompt=prompt,
         negative_prompt=negative_prompt,
         seed=int(seed),
-        image_filenames=filenames,
+        grid_filename=grid_filename,
     )
 
     with trace_span(

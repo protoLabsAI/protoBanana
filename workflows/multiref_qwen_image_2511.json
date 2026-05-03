@@ -1,4 +1,5 @@
 {
+  "_doc": "Multi-reference compose. multiref.run pre-stitches N references into a single grid image and uploads it as ref_grid.png; this workflow loads that one image, scales to 1.05 MP, encodes via TextEncodeQwenImageEditPlus.image1, and regenerates from an empty latent (denoise=1.0) so the model composes from scratch using the grid as conditioning. The image2/image3 slots on TextEncodeQwenImageEditPlus are intentionally NOT used — empirically the encoder weights image1 overwhelmingly and the additional slots are effectively no-ops.",
   "3": {
     "inputs": {
       "seed": 0,
@@ -6,41 +7,17 @@
       "cfg": 2.5,
       "sampler_name": "euler",
       "scheduler": "simple",
-      "denoise": 0.7,
-      "model": [
-        "37",
-        0
-      ],
-      "positive": [
-        "6",
-        0
-      ],
-      "negative": [
-        "7",
-        0
-      ],
-      "latent_image": [
-        "115",
-        0
-      ]
+      "denoise": 1.0,
+      "model": ["37", 0],
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "latent_image": ["116", 0]
     },
     "class_type": "KSampler"
   },
   "100": {
     "inputs": {
-      "image": "ref1.png"
-    },
-    "class_type": "LoadImage"
-  },
-  "101": {
-    "inputs": {
-      "image": "ref2.png"
-    },
-    "class_type": "LoadImage"
-  },
-  "102": {
-    "inputs": {
-      "image": "ref3.png"
+      "image": "ref_grid.png"
     },
     "class_type": "LoadImage"
   },
@@ -48,123 +25,47 @@
     "inputs": {
       "upscale_method": "lanczos",
       "megapixels": 1.05,
-      "image": [
-        "100",
-        0
-      ],
-      "resolution_steps": 1
+      "image": ["100", 0]
     },
     "class_type": "ImageScaleToTotalPixels"
   },
-  "111": {
+  "116": {
     "inputs": {
-      "upscale_method": "lanczos",
-      "megapixels": 1.05,
-      "image": [
-        "101",
-        0
-      ],
-      "resolution_steps": 1
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
     },
-    "class_type": "ImageScaleToTotalPixels"
-  },
-  "112": {
-    "inputs": {
-      "upscale_method": "lanczos",
-      "megapixels": 1.05,
-      "image": [
-        "102",
-        0
-      ],
-      "resolution_steps": 1
-    },
-    "class_type": "ImageScaleToTotalPixels"
-  },
-  "115": {
-    "inputs": {
-      "pixels": [
-        "110",
-        0
-      ],
-      "vae": [
-        "39",
-        0
-      ]
-    },
-    "class_type": "VAEEncode"
+    "class_type": "EmptySD3LatentImage"
   },
   "6": {
     "inputs": {
-      "prompt": "blend the style of ref2 and the subject of ref1",
-      "clip": [
-        "38",
-        0
-      ],
-      "vae": [
-        "39",
-        0
-      ],
-      "image1": [
-        "110",
-        0
-      ],
-      "image2": [
-        "111",
-        0
-      ],
-      "image3": [
-        "112",
-        0
-      ]
+      "prompt": "compose using the references",
+      "clip": ["38", 0],
+      "vae": ["39", 0],
+      "image1": ["110", 0]
     },
     "class_type": "TextEncodeQwenImageEditPlus"
   },
   "7": {
     "inputs": {
       "prompt": "low quality, blurry",
-      "clip": [
-        "38",
-        0
-      ],
-      "vae": [
-        "39",
-        0
-      ],
-      "image1": [
-        "110",
-        0
-      ],
-      "image2": [
-        "111",
-        0
-      ],
-      "image3": [
-        "112",
-        0
-      ]
+      "clip": ["38", 0],
+      "vae": ["39", 0],
+      "image1": ["110", 0]
     },
     "class_type": "TextEncodeQwenImageEditPlus"
   },
   "8": {
     "inputs": {
-      "samples": [
-        "3",
-        0
-      ],
-      "vae": [
-        "39",
-        0
-      ]
+      "samples": ["3", 0],
+      "vae": ["39", 0]
     },
     "class_type": "VAEDecode"
   },
   "9": {
     "inputs": {
       "filename_prefix": "protobanana-multiref",
-      "images": [
-        "8",
-        0
-      ]
+      "images": ["8", 0]
     },
     "class_type": "SaveImage"
   },
