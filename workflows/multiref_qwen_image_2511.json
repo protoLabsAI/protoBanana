@@ -25,6 +25,7 @@
     "inputs": {
       "upscale_method": "lanczos",
       "megapixels": 1.05,
+      "resolution_steps": 1,
       "image": ["100", 0]
     },
     "class_type": "ImageScaleToTotalPixels"
