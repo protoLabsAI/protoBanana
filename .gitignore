@@ -40,3 +40,16 @@ docs/content/drafts/
 
 # Notebook checkpoints
 .ipynb_checkpoints/
+
+# VitePress build output + node deps
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+docs/package-lock.json
+# Auto-generated copies of root markdown — see docs/prebuild.mjs
+docs/deep-dives/proposal.md
+docs/deep-dives/phases.md
+docs/deep-dives/journey.md
+docs/deep-dives/howto.md
+docs/deep-dives/decisions.md
+docs/deep-dives/changelog.md
