@@ -6,6 +6,172 @@
 
 ---
 
+## 0015 — Pin `[tracing]` extra to langfuse v2 (LiteLLM compatibility)
+
+**2026-05-03** · Status: accepted
+
+**Context.** First production deploy of the chat agent (#13) crashed
+LiteLLM's own Langfuse callback at boot:
+
+```
+Langfuse.__init__() got an unexpected keyword argument 'sdk_integration'
+```
+
+LiteLLM's `proxy-runtime` extra hard-pins `langfuse==2.59.7` and constructs
+`Langfuse(sdk_integration=...)`. v3 dropped that kwarg without a
+deprecation. Our `[tracing]` extra requested `langfuse>=3.0,<4`, pip
+resolved to 3.14.6, and LiteLLM's callback registration broke. The error
+is non-blocking (the request still flows) but it killed Langfuse tracing
+on the gateway entirely — both LiteLLM's coarse traces AND our
+fine-grained ones.
+
+Two fixes were on the table:
+
+- **Pin our extra to v2**: LiteLLM's callback works again. Our v3-only
+  `_tracing.py` (uses `from langfuse import get_client` +
+  `start_as_current_span`) gracefully fails the import on v2 and falls
+  back to no-op spans. Trade: no fine-grained sub-spans from us; only
+  LiteLLM's per-request traces emit.
+- **Make `_tracing.py` support both v2 and v3 APIs**: full
+  observability under either pin. Cost: write a v2 adapter
+  (`Langfuse() + trace().span()` shape, very different from v3's OTel-
+  flavoured `start_as_current_span` context manager).
+
+**Decision.** Pin to v2 immediately; defer the v2 adapter.
+
+The fast path was the right call because (a) LiteLLM's callback was
+the production-blocking failure, (b) LiteLLM's per-request traces
+already give the most-asked-for observability ("which model, what
+input, what output, latency"), (c) the v2 adapter is real engineering
+work that shouldn't gate a hotfix.
+
+**Consequences.**
+- ✅ LiteLLM Langfuse callback resumes immediately on next deploy
+- ✅ Our `_tracing.py` no-ops cleanly on v2 (verified locally) — no
+  crashes, no silent corruption
+- ❌ Our fine-grained sub-spans (workflow_stem, prompt_id,
+  comfyui.wait_for_completion latency, agent iteration tree) are
+  invisible until a v2 adapter lands. The agent's "which tool got
+  called" stays observable via LiteLLM's request/response capture.
+- ❌ When LiteLLM eventually upgrades to langfuse v3, this pin
+  becomes a problem in reverse. Treat it as a known migration debt
+  (track in CHANGELOG).
+
+---
+
+## 0014 — Agent must use AsyncOpenAI inside an async LiteLLM proxy
+
+**2026-05-03** · Status: accepted
+
+**Context.** First deploy of #13 hung for 2+ minutes per chat turn,
+no error, no progress. Diagnosis took longer than the fix because
+the proxy logs showed nothing useful — the request just sat there.
+
+Root cause: the agent's LLM call used the synchronous `OpenAI(...).
+chat.completions.create(...)`, which inside an async coroutine blocks
+the entire event loop. The agent's `PROTOBANANA_AGENT_BASE` points
+at the same gateway (`http://localhost:4000/v1`), so the agent calls
+back through LiteLLM. But the sync call held the event loop while
+waiting on a response that needed the same loop to be served.
+Instant deadlock. The block was invisible: no exception, no "request
+in flight" log line, just an infinitely waiting socket.
+
+**Decision.** Hard rule: **any LLM client invoked inside protoBanana's
+async path uses `AsyncOpenAI` and is awaited.** The agent module
+already had `async def run`; the OpenAI client was the one
+synchronous call. Fix was a 2-line change.
+
+Linting/contract: `protobanana.agent._build_lm_client` returns
+`AsyncOpenAI`, and tests use `AsyncMock` for the `chat.completions.
+create` mock so an accidental switch back to sync would fail the
+suite.
+
+**Consequences.**
+- ✅ Chat turn that previously hung forever now completes in seconds
+- ✅ Tests catch a regression to sync (AsyncMock vs MagicMock — sync
+  call on AsyncMock returns a coroutine that's never awaited, fail
+  pattern is loud)
+- ❌ Future contributors who reflexively reach for `OpenAI()` will
+  hit the same trap. Documented in `agent.py`'s
+  `_build_lm_client()` docstring + this ADR.
+- This trap generalises: any sync HTTP/LLM call inside the proxy's
+  async path will deadlock the same way if it loops back. Worth
+  remembering when writing future tools that call out.
+
+---
+
+## 0013 — Tool-use chat agent on `/v1/chat/completions`
+
+**2026-05-03** · Status: accepted
+
+**Context.** The Phase 1 chat path was a deterministic
+keyword→workflow dispatcher: walk message history, extract latest
+user prompt, classify the operation by keyword match, run one image
+op, embed the result as a markdown data URL. That worked for simple
+imperative prompts (`draw a cat`, `make her shirt blue`) but
+couldn't handle the things users actually do in conversation:
+
+- Conversational replies — `thanks!` got an image of "thanks!"
+  generated, because the keyword router can't *not* run an op
+- Clarifying questions — `make it red` was ambiguous (the *what*?)
+  but had no way to ask
+- Chained operations — `remove the bg, then add a sunset` needed
+  two ops in one reply; the keyword router picked one
+- Natural feedback — `actually I prefer the previous one` had
+  nowhere to land; the router had no concept of "no op needed"
+
+These weren't fixable with smarter keywords. The chat path needed
+an LLM that owned the entire conversation surface; image ops became
+tools it could choose to call.
+
+**Decision.** Replace the keyword classifier with a tool-use agent
+loop on the chat path:
+
+1. Build OpenAI-shape tool definitions for all 6 image ops
+   (`generate_image`, `edit_image`, `region_edit`, `remove_background`,
+   `multi_ref_compose`, `outpaint`).
+2. On each chat completion, call the configured LM (default
+   `protolabs/fast` = Qwen3.6-35B-A3B-FP8) with the chat history +
+   tool list.
+3. If the LM returns text only → return it (conversational reply).
+   If the LM returns tool calls → execute each against ComfyUI →
+   feed `{success, image_size_bytes}` back to the LM → loop. Cap
+   iterations at 3.
+4. The LM never sees image bytes. Server-side state holds the most
+   recent image + the full image list for `multi_ref_compose`. The
+   final response embeds the last produced image as a markdown
+   data URL (same shape as before, so existing clients keep
+   rendering).
+5. Keep the keyword classifier as a fallback. When the agent is
+   disabled (no `PROTOBANANA_AGENT_BASE`), the openai client isn't
+   importable, or the first LM call fails, the provider falls
+   through to the existing keyword dispatch — degraded UX
+   (image-only output) but the system stays up.
+
+**Consequences.**
+- ✅ Conversational replies, clarifying questions, multi-step
+  chains all become possible
+- ✅ The natural way to add Phase 8+ ops is "add a new tool
+  definition + executor" — no new keyword arms, no new dispatch
+  branches
+- ✅ Smaller routing models (Qwen-fast) work but need anchored
+  prompts; larger models (Claude, GPT-4) would need less
+  hand-holding. `PROTOBANANA_AGENT_MODEL=protolabs/smart` switches
+  to a thinking model when routing quality matters more than
+  latency.
+- ❌ +500-800 ms latency per chat turn (the LM call before any
+  image work starts)
+- ❌ Failure surface expanded: prompt drift, hallucinated tool
+  args, infinite tool loops. Mitigated by `temperature=0`,
+  `max_iterations=3`, and the keyword fallback.
+- ❌ Tool descriptions become a *contract* the LLM reads; bad
+  copy → bad routing. Locked the description style in
+  `protobanana/tools.py`.
+- See ADR 0014 (AsyncOpenAI) and 0015 (langfuse v2 pin) for the
+  production-deploy bugs this surfaced.
+
+---
+
 ## 0012 — Static workflow validator + e2e smoke as the pre-merge gate
 
 **2026-05-03** · Status: accepted

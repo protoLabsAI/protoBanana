@@ -401,3 +401,146 @@ what the workflow *meant* relative to the model loaded at node 37.
 That's also why the bug survived through PR review, validator runs,
 and 46 unit tests. The whole chain was checking spelling on a
 grammatically-valid sentence with the wrong meaning.
+
+---
+
+## Day 5 — phases 4-7 land, and the chat path becomes an agent
+
+After the conditioning fix shipped and the gateway started serving
+Edit / Sticker / Multi-ref correctly, the natural next step was the
+remaining ChatGPT-image-2 capabilities: region edit, inpaint, outpaint.
+What we discovered along the way changed the shape of the chat path
+itself.
+
+### Phase 4 didn't go where we planned
+
+The plan was Florence-2 + SAM 2.1 for text-grounded region edit
+("change the man's tie"). Both nodes existed in the ComfyUI install,
+both crashed at runtime — `BertModel.get_head_mask` had been removed
+from a newer `transformers`, taking GroundingDINO with it, and
+Florence-2's bundled config dropped `forced_bos_token_id` in the
+same release. Our ComfyUI's `transformers` version was newer than
+the grounding nodes expected.
+
+Three options sat on the table: pin transformers in ComfyUI's venv
+(risk of breaking Qwen-Image-Edit), find a different grounding
+stack, or skip auto-grounding and ship brushed-mask UX as Phase 5
+first.
+
+The user reframed: **brushed mask is not the priority — the agent
+should generate the mask, not the user.** That kept Phase 4 alive
+but needed a working text→mask grounder. SAM 3 (`SAM3Segment` in
+ComfyUI-RMBG) turned out to bundle its own grounding without DINO
+or Florence dependencies. One probe, "white circle" → clean polygon
+mask in 30 seconds. Wired that into a new `region_edit` workflow:
+
+```
+LoadImage → SAM3Segment(prompt=grounding_text) → GrowMask →
+  TextEncodeQwenImageEditPlus(prompt + image) →
+  InpaintModelConditioning(noise_mask=true) → KSampler →
+  ImageCompositeMasked(destination=init, source=edited, mask=sam_mask)
+```
+
+The composite at the end is what makes the technique honest —
+outside-mask pixels come from the original at byte level, not
+through the VAE roundtrip. Verified with a corner-pixel diff: 0
+drift on a "change the white circle to a yellow star" run.
+
+### The chat-path direction the user actually wanted
+
+Phase 6 (outpaint) and Phase 7 went in cleanly. Phase 7 as built
+was an "optional LM second-pass classifier" — fire the LM only when
+the keyword router picked the catch-all EDIT/GEN, let it refine to
+something more specific. It worked but felt minor. The user pushed
+back:
+
+> wait, no. i want an llm to be the router, we have protolabs/fast
+> to get quick feedback from and this would power the chat portion
+> of the agent as well, yeah?
+
+That was the real ask. The keyword router had been the chat path
+since day one — every chat turn ran one image op and returned an
+image. It couldn't say "you're welcome", couldn't ask "did you
+mean her hat or his?", couldn't chain `remove_background` then
+`outpaint` in one reply. Those weren't fixable with smarter
+keywords. The chat path needed an LLM that owned the conversation
+surface, with image ops as tools.
+
+Built that. Tool definitions in `protobanana/tools.py`, agent loop
+in `protobanana/agent.py`. The LLM never sees image bytes — server-
+side state holds the most recent image, tool results returned to
+the LLM are tiny `{success, size}` dicts. Three-iteration cap.
+Keyword classifier kept as fallback when no LM endpoint is
+configured.
+
+ADR 0013 captures the full context.
+
+### Two production bugs the build didn't catch
+
+First deploy: chat hung for 2+ minutes per turn, no error, no
+progress. Diagnosis took longer than the fix because the proxy logs
+showed nothing — the request just sat. Root cause was
+embarrassingly simple: the agent used the *synchronous* OpenAI
+client inside an async coroutine, and its `PROTOBANANA_AGENT_BASE`
+points at the same gateway. The sync call held the event loop while
+waiting on a response that needed the same loop to be served.
+Instant deadlock, invisible to logs. Fix: `AsyncOpenAI` + `await`.
+ADR 0014.
+
+Second deploy: agent ran but Langfuse traces stopped emitting.
+LiteLLM's own callback failed at boot:
+
+```
+Langfuse.__init__() got an unexpected keyword argument 'sdk_integration'
+```
+
+LiteLLM hard-pins langfuse v2.59.7 and constructs `Langfuse(
+sdk_integration=...)`. Our `[tracing]` extra had requested
+`langfuse>=3.0,<4`, and v3 dropped the kwarg. Pip resolved to v3,
+LiteLLM's callback registration broke. Pinned `[tracing]` back to
+v2; our v3-only `_tracing.py` fails the import gracefully on v2 →
+no-op spans. Trade: only LiteLLM's per-request traces emit until
+a v2 adapter ships in protoBanana. ADR 0015.
+
+Both bugs slipped past my smoke imports — sync vs async is runtime
+semantics invisible to `import openai`, and the Langfuse kwarg
+mismatch fires at LiteLLM's callback registration, not at module
+import. The lesson: a real boot-and-poke smoke (spin litellm + hit
+an endpoint) would have caught both. Build-time imports give a
+false sense of safety on the integration surface.
+
+### Day 5 punchline
+
+The third deploy hit the actual user-facing UX:
+
+> close, it was able to infer what was i asking for, but it didn't
+> call the edit, it just created a new cat in a hat
+
+The user had typed `draw a cat in a hat`, gotten an image, then said
+`make it a bowling cap`. The agent saw the prior assistant image and
+*still* picked `generate_image`. The prompt rules said the right
+thing in english but framed the image-in-conversation as
+informational ("the recent assistant image is available for
+edit_image..."). At T=0, Qwen3.6-35B doesn't promote informational
+context to a routing constraint — it's just background.
+
+Rewrote the prompt as a directive contract: **"If the conversation
+already contains an image, the user's next message is almost always
+about THAT image."** Plus few-shot examples for the actually-
+confusing cases (`make it a bowling cap` → region_edit, `make it
+watercolor` → edit_image, `now draw a dog instead` → generate_image,
+`thanks!` → text reply, no tool). Verified live against vLLM
+local-fast: 7/8 cases route deterministically.
+
+The lesson worth keeping: **smaller routing models need anchored
+prompts + examples; larger models don't.** When `protolabs/fast`
+isn't enough, `PROTOBANANA_AGENT_MODEL=protolabs/smart` (Qwen3.6-
+27B-FP8 thinking) is one env var away — no rebuild.
+
+By the end of Day 5, the chat agent owned the chat surface, all
+seven phases had shipped, and the deploys-after-deploys stack of
+fixes had made the gateway integration robust. The architecture
+reached a stable shape: keyword classifier as guaranteed fallback,
+LM agent as the production default, Langfuse tracing through
+LiteLLM's callback for now, fine-grained sub-spans deferred behind
+the v2 adapter.
