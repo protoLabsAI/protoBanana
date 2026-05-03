@@ -3,10 +3,10 @@
     "inputs": {
       "seed": 0,
       "steps": 20,
-      "cfg": 4.0,
+      "cfg": 2.5,
       "sampler_name": "euler",
       "scheduler": "simple",
-      "denoise": 1.0,
+      "denoise": 0.7,
       "model": [
         "37",
         0
