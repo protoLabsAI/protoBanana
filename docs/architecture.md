@@ -130,8 +130,8 @@ They're isolated, testable, swappable.
 
 | Route | Stem | Substitution | Returns |
 |---|---|---|---|
-| `gen` | `gen_qwen_image_2512` | prompt, neg_prompt, seed, width, height (nodes 6/7/3/5) | bytes |
-| `edit` | `edit_qwen_image_2511` | prompt, neg_prompt, seed, image filename (nodes 6/7/3/4) | bytes |
+| `gen` | `qwen_image_2512` | prompt, neg_prompt, seed, width, height (nodes 6/7/3/5) | bytes |
+| `edit` | `qwen_image_edit_2511` | prompt, neg_prompt, seed, image filename (nodes 6/7/3/4) | bytes |
 | `multiref` | `multiref_qwen_image_2511` | prompt, neg_prompt, seed, up to 3 image filenames (nodes 6/7/3/100/101/102) | bytes |
 | `bgremove` | `bgremove_birefnet` | image filename only (node 4) | bytes (PNG with alpha) |
 
@@ -159,8 +159,8 @@ Static JSON workflows. One file per operation/model combination:
 
 ```
 workflows/
-├── gen_qwen_image_2512.json          # Phase 1 — text-to-image
-├── edit_qwen_image_2511.json         # Phase 1 — single-image edit
+├── qwen_image_2512.json          # Phase 1 — text-to-image
+├── qwen_image_edit_2511.json         # Phase 1 — single-image edit
 ├── multiref_qwen_image_2511.json     # Phase 3 — 2-3 image compose
 ├── bgremove_birefnet.json            # Phase 2 — bg removal (commercial)
 ├── bgremove_rmbg2.json               # Phase 2 — bg removal (NC)

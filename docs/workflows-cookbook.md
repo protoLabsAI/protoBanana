@@ -10,8 +10,24 @@ Every JSON file is a complete ComfyUI workflow. Static defaults for all
 node inputs; per-request fields are mutated by `routes/<op>.py` before
 submission.
 
-Naming convention: `<operation>_<model>.json` — e.g. `gen_qwen_image_2512`,
-`bgremove_birefnet`, `region_edit_florence2_sam2_qwen` (Phase 4).
+Naming convention:
+
+- **Primary use of an upstream model** → use the upstream model name as-is.
+  Examples: `qwen_image_2512.json` (the Qwen-Image-2512 generator),
+  `qwen_image_edit_2511.json` (the Qwen-Image-Edit-2511 editor). This
+  keeps stems aligned with what gateway aliases and downstream
+  references already call the model.
+- **App-level pattern reusing an upstream model differently** →
+  `<operation>_<model>` so the same model can ship in multiple roles.
+  Examples: `multiref_qwen_image_2511.json` (Qwen-Image-Edit-2511 in
+  3-image-input multi-ref mode), `region_edit_florence2_sam2_qwen.json`
+  (queued Phase 4).
+- **Specialized model entirely** → `<operation>_<model>` is fine when
+  the model name alone doesn't tell you which op it serves. Example:
+  `bgremove_birefnet.json`.
+
+Stems must be unique; the route's `DEFAULT_STEM` constant must match
+the JSON filename exactly.
 
 ---
 

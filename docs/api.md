@@ -182,8 +182,8 @@ how you configured `model_list`):
 
 | Alias | Backed by | Operation | Use case |
 |---|---|---|---|
-| `protolabs/qwen-image` | `gen_qwen_image_2512` | gen | Direct text-to-image |
-| `protolabs/qwen-image-edit` | `edit_qwen_image_2511` | edit | Direct edit |
+| `protolabs/qwen-image` | `qwen_image_2512` | gen | Direct text-to-image |
+| `protolabs/qwen-image-edit` | `qwen_image_edit_2511` | edit | Direct edit |
 | `protolabs/qwen-image-chat` | (auto-routes per turn) | gen/edit/multiref/bgremove | **Default for chat clients** |
 | `protolabs/qwen-image-bgremove` | `bgremove_birefnet` | bgremove | Direct sticker (commercial license) |
 | `protolabs/qwen-image-bgremove-rmbg` | `bgremove_rmbg2` | bgremove | Direct sticker (RMBG-2.0, NC) |

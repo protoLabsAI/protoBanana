@@ -3,6 +3,49 @@
 All notable changes to protoBanana. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 SemVer.
 
+## [0.1.0a3] — 2026-05-03 — stem alignment + multiref prune + workflow_stem extraction
+
+### Fixed
+
+- **Chat path tried to load `gen_qwen_image_2512.json` against gateways
+  named after upstream models.** `gen.DEFAULT_STEM` and
+  `edit.DEFAULT_STEM` were prefixed with the operation name
+  (`gen_*` / `edit_*`) which forced gateway maintainers to keep the
+  same naming. Renamed both to match the upstream Qwen model names
+  (`qwen_image_2512`, `qwen_image_edit_2511`) so a chat request
+  through any gateway using the standard model names just works
+  without per-deployment config.
+- **Multi-ref with <3 reference images failed with `Invalid image
+  file: ref3.png`.** `multiref.substitute()` only populated the slots
+  it had filenames for, leaving the others with placeholder defaults.
+  Now also prunes the unused `LoadImage` + `ImageScale` pairs and
+  drops the corresponding `image_N` input from both encoder nodes
+  (the encoder inputs are optional per `/object_info`). 5 new unit
+  tests + e2e verified.
+- **`workflow_stem` extraction silently fell back to a hardcoded
+  default for the bare-name case.** LiteLLM strips the provider prefix
+  on `/v1/images/{generations,edits}` but keeps it on
+  `/v1/chat/completions`. The `if "/" in model else DEFAULT` guard
+  routed every bare-name request to the wrong workflow. Now uses
+  `model.split("/", 1)[-1] or DEFAULT` — handles both shapes. 3 new
+  regression tests.
+
+### Changed
+
+- `workflows/gen_qwen_image_2512.json` → `workflows/qwen_image_2512.json`
+- `workflows/edit_qwen_image_2511.json` → `workflows/qwen_image_edit_2511.json`
+- `gen.DEFAULT_STEM` constant + docstrings updated to match
+- `edit.DEFAULT_STEM` constant + docstrings updated to match
+- `docs/workflows-cookbook.md` — naming convention now distinguishes
+  upstream-model-direct (gen/edit) vs. operation-prefix
+  (multiref/bgremove). Stem MUST match JSON filename.
+
+### Discovered via
+
+- [homelab-iac#56](https://github.com/protoLabsAI/homelab-iac/pull/56) — gateway migration to protoBanana package surfaced all three issues in sequence as each piece of the live stack started running real requests.
+
+---
+
 ## [0.1.0a2] — 2026-05-03 — workflow validator + edit conditioning fix
 
 ### Fixed

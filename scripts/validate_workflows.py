@@ -17,7 +17,7 @@ Usage:
     COMFYUI_BASE_URL=http://protolabs:8188 python scripts/validate_workflows.py workflows/
 
     # Single file
-    python scripts/validate_workflows.py workflows/edit_qwen_image_2511.json
+    python scripts/validate_workflows.py workflows/qwen_image_edit_2511.json
 
 Exit code is the number of failed workflows (0 = all clean).
 Run before merging any workflow change. CI hooks this when COMFYUI_BASE_URL is set.

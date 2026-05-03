@@ -1,4 +1,4 @@
-"""Text-to-image generation. Workflow stem: `gen_qwen_image_2512`."""
+"""Text-to-image generation. Workflow stem: `qwen_image_2512`."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 from protobanana.client import ComfyUIClient
 from protobanana.workflows.loader import WorkflowLoader
 
-DEFAULT_STEM = "gen_qwen_image_2512"
+DEFAULT_STEM = "qwen_image_2512"
 
 
 def substitute(
@@ -20,7 +20,7 @@ def substitute(
     width: int,
     height: int,
 ) -> dict[str, Any]:
-    """Convention for gen_qwen_image_2512:
+    """Convention for qwen_image_2512:
     node "6" CLIPTextEncode = positive
     node "7" CLIPTextEncode = negative
     node "5" EmptySD3LatentImage = canvas dims

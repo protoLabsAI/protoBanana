@@ -61,7 +61,7 @@ pip install git+https://github.com/protoLabsAI/protoBanana.git
 model_list:
   - model_name: protolabs/qwen-image
     litellm_params:
-      model: protobanana/gen_qwen_image_2512
+      model: protobanana/qwen_image_2512
       api_base: http://your-comfyui-host:8188
     model_info: { mode: image_generation }
 
