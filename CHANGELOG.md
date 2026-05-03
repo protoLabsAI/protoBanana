@@ -3,6 +3,32 @@
 All notable changes to protoBanana. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 SemVer.
 
+## [0.1.0a1] — 2026-05-03 — Gradio test/eval UI + HF Space scaffold
+
+### Added
+
+- `app/gradio_app.py` — Gradio 5.x UI with 5 tabs (Generate, Edit,
+  Multi-ref, Sticker/BG remove, Chat). Settings accordion for gateway
+  URL + API key + model alias overrides. Defaults pull from env.
+- `app/__main__.py` — `python -m app` entry point with `--share`,
+  `--port`, `--auth` flags
+- `app/README.md` — Gradio app docs (configuration, troubleshooting)
+- `app/spaces/app.py` — HuggingFace Spaces entry point that re-exports
+  the canonical `build_app()`
+- `app/spaces/requirements.txt` — minimal Space deps (gradio, openai, pillow)
+- `app/spaces/README.md` — Space frontmatter + deploy walk-through
+- `docs/GRADIO-APP.md` — UI architecture + Space deploy strategy
+- `gradio` optional extra in pyproject (`pip install -e ".[gradio]"`)
+
+### Architecture note
+
+The Gradio app is a thin OpenAI client (~600 LOC). All model logic stays
+server-side in the gateway + provider; the Space deploy is CPU-only
+because nothing on the UI side touches model weights. Users bring their
+own gateway URL + API key (or the Space owner sets them as Space secrets).
+
+---
+
 ## [0.1.0a0] — 2026-05-03 — initial extraction
 
 Standalone repo carved out of `protoLabsAI/homelab-iac` PRs #52, #53.
