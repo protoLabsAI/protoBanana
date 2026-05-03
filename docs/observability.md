@@ -33,27 +33,44 @@ For `/v1/images/generations` and `/v1/images/edits` the parent span is `protoban
 
 Image bytes are summarized as `{size_bytes, sha256_12}` rather than logged in full — full payloads bloat traces and are reproducible from the request anyway.
 
-## Status today: LiteLLM-level traces only
+## Version compatibility
 
-The `[tracing]` extra is pinned to `langfuse>=2.59,<3` to coexist with
-LiteLLM's own success_callback Langfuse integration (LiteLLM hard-pins
-v2.59.7 and constructs `Langfuse(sdk_integration=...)`, a kwarg v3
-removed). Our `_tracing.py` uses v3's `get_client()` API; on v2 the
-import fails and our spans no-op gracefully.
+`_tracing.py` supports **both Langfuse v2 and v3** SDK shapes:
 
-**What this means in practice:**
+- **v3** (`langfuse>=3.0`): uses `get_client()` + `start_as_current_
+  span()`. Spans nest automatically via OpenTelemetry context
+  propagation, even across `await` points.
+- **v2** (`langfuse>=2.59,<3`): uses `Langfuse()` constructor +
+  `client.trace()` / `parent.span()`. Spans nest via a `contextvars`
+  stack we maintain ourselves (also propagates across `await` because
+  `contextvars` is per-task).
+- **off**: no langfuse installed OR `LANGFUSE_PUBLIC_KEY` unset →
+  `trace_span` yields a no-op span. Zero overhead.
 
-- ✅ LiteLLM's per-request Langfuse traces (model, input, output,
-  latency, token counts) emit normally — these are the most-asked-for
-  observability and they work today.
-- ⏸ Our **fine-grained sub-spans** (workflow_stem, prompt_id,
-  comfyui.wait_for_completion, agent iteration tree, tool call
-  metadata) are deferred until a v2 adapter ships in `_tracing.py`.
+The `[tracing]` extra installs v2 by default to coexist with LiteLLM's
+own Langfuse callback (LiteLLM hard-pins v2.59.7 and would crash at
+boot if v3 is installed beside it: `Langfuse.__init__() got an
+unexpected keyword argument 'sdk_integration'`). Standalone deployments
+without LiteLLM can install v3 manually and the same code path works.
 
-If you're running protoBanana standalone (no LiteLLM in the same
-venv) you can install langfuse v3 manually and the fine-grained spans
-will emit. Inside the protoLabs gateway image, v2 is the default for
-LiteLLM compatibility.
+## What you get on the gateway today
+
+With v2 installed (the default in the protoLabs gateway image):
+
+- ✅ **LiteLLM's per-request traces** — model, input, output, latency,
+  token counts — the broad picture of every chat completion / image
+  request flowing through the gateway.
+- ✅ **protoBanana fine-grained sub-spans** — `protobanana.acompletion`
+  parent + `protobanana.classify_operation` / `protobanana.agent.iter_*`
+  / `protobanana.tool.*` / `comfyui.upload` / `comfyui.submit` /
+  `comfyui.wait_for_completion` / `comfyui.fetch_image` children, with
+  `metadata.workflow_stem`, `metadata.prompt_id`, etc.
+
+Both layers emit to the same Langfuse backend. LiteLLM's traces and
+ours are siblings (separate top-level traces) — Langfuse v2 doesn't
+have cross-process span adoption, and LiteLLM's callback doesn't
+expose its trace_id. Filter by trace name to scope to one or the
+other in the UI.
 
 ## Enabling tracing
 
