@@ -95,6 +95,104 @@ _REGION_SPLITTERS: list[re.Pattern] = [
 ]
 
 
+# ---- Outpaint direction parsing ------------------------------------------
+
+# Default per-side amount when the user names a direction without a size
+# ("extend left" → 256 px). Matches Qwen-Image-Edit-2511's comfort zone:
+# stays inside the model's ~1.05 MP sweet spot for a 1024-on-side image.
+DEFAULT_OUTPAINT_AMOUNT = 256
+
+
+def extract_outpaint_directions(
+    prompt: str,
+    *,
+    default_amount: int = DEFAULT_OUTPAINT_AMOUNT,
+) -> tuple[int, int, int, int] | None:
+    """Parse outpaint directions out of the prompt.
+
+    Returns ``(left, top, right, bottom)`` pixel pad amounts, or
+    ``None`` if no direction-bearing phrase matched (caller falls back
+    to a uniform pad on all sides).
+
+    Patterns covered (case-insensitive):
+
+    >>> extract_outpaint_directions("extend left")
+    (256, 0, 0, 0)
+    >>> extract_outpaint_directions("extend right by 512")
+    (0, 0, 512, 0)
+    >>> extract_outpaint_directions("show more sky above")
+    (0, 256, 0, 0)
+    >>> extract_outpaint_directions("make this wider")    # both sides
+    (256, 0, 256, 0)
+    >>> extract_outpaint_directions("make this taller")
+    (0, 256, 0, 256)
+    >>> extract_outpaint_directions("expand the image")   # uniform
+    (256, 256, 256, 256)
+    >>> extract_outpaint_directions("uncrop")              # uniform
+    (256, 256, 256, 256)
+    """
+    if not prompt:
+        return None
+    p = prompt.lower()
+    sides = [0, 0, 0, 0]
+    matched = False
+
+    # Two-step heuristic: confirm outpaint INTENT, then look for
+    # direction words anywhere in the prompt. Splitter is liberal —
+    # the classifier already decided this is OUTPAINT, so a permissive
+    # split is safer than a strict regex that misses ("extend the
+    # canvas to the right" — "extend" and "right" separated by 4
+    # words, an inflexible pattern misses it).
+    has_outpaint_verb = bool(re.search(
+        r"\b(?:extend|more|show more|expand|widen|uncrop|outpaint|stretch|grow)\b",
+        p,
+    ))
+
+    if has_outpaint_verb:
+        # Direction tokens — any one of these in the prompt nudges its side.
+        direction_tokens: list[tuple[str, int]] = [
+            (r"\b(?:to\s+the\s+)?left\b", 0),
+            (r"\b(?:to\s+the\s+)?right\b", 2),
+            (r"\b(?:up(?:ward(?:s)?)?|above|on\s+top|overhead|sky|ceiling)\b", 1),
+            (r"\b(?:down(?:ward(?:s)?)?|below|underneath|floor|ground)\b", 3),
+        ]
+        for pat, side_idx in direction_tokens:
+            if re.search(pat, p):
+                sides[side_idx] = default_amount
+                matched = True
+
+    # "wider" / "taller" — symmetric pair, no outpaint verb required
+    if re.search(r"\b(?:wider|widen)\b", p) or \
+       re.search(r"\bmake\s+(?:this|it|the\s+\w+)\s+wider\b", p):
+        sides[0] = default_amount
+        sides[2] = default_amount
+        matched = True
+    if re.search(r"\btaller\b", p) or \
+       re.search(r"\bmake\s+(?:this|it|the\s+\w+)\s+taller\b", p):
+        sides[1] = default_amount
+        sides[3] = default_amount
+        matched = True
+
+    # "expand the image", "uncrop", "outpaint" with no direction → uniform
+    if not matched and re.search(r"\b(?:expand\s+the\s+image|uncrop|outpaint)\b", p):
+        sides = [default_amount] * 4
+        matched = True
+
+    # Optional "by N" / "N pixels" / "N px" — overrides the default
+    # amount on whichever sides we set. Allow 1-4 digit numbers; clamp
+    # the result to [64, 1024] so a typo can't OOM the GPU.
+    by_match = re.search(
+        r"\bby\s+(\d{1,4})\s*(?:px|pixels?)?\b|\b(\d{2,4})\s*(?:px|pixels?)\b",
+        p,
+    )
+    if by_match and matched:
+        n = int(by_match.group(1) or by_match.group(2))
+        n = max(64, min(n, 1024))
+        sides = [n if s > 0 else 0 for s in sides]
+
+    return tuple(sides) if matched else None  # type: ignore[return-value]
+
+
 def extract_region_edit_parts(prompt: str) -> tuple[str, str] | None:
     """Split a REGION_EDIT prompt into ``(grounding_text, edit_prompt)``.
 

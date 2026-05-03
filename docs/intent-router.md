@@ -16,7 +16,10 @@ need to decide:
 3. **Which workflow** — each operation maps to one (rarely more) workflow
 
 The router is deterministic — same inputs always give same operation.
-Phase 7 will add an LM-based router for ambiguous cases.
+Phase 7 adds an **optional** LM-based second pass for the ambiguous
+EDIT/GEN catch-alls; it never fires for the high-confidence keyword
+ops, and it's off by default. See
+[Observability](observability) for enabling it.
 
 ---
 

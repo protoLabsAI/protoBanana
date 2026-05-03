@@ -79,6 +79,37 @@ So you'll see two traces per chat request: one from LiteLLM (request/response sh
 
 If this becomes a problem (e.g. trace billing), the next iteration would pass LiteLLM's trace context through to our spans via the callback hook.
 
+## Optional LM intent classifier
+
+An LM-based second-pass classifier is available for disambiguating
+prompts the keyword router lumps under EDIT/GEN. Off by default; the
+keyword router covers ~95% of agent prompts at 0 ms latency without
+risk of LM hallucination. The LM only fires when the keyword router
+returns EDIT or GEN and gets to OVERRIDE the keyword pick only if it
+returns a more specific operation.
+
+Enable by exporting:
+
+```bash
+export PROTOBANANA_LM_CLASSIFIER=1
+export PROTOBANANA_LM_BASE=http://ava:4000/v1   # any OpenAI-compat URL
+export PROTOBANANA_LM_KEY=sk-...                # optional, defaults to "none"
+export PROTOBANANA_LM_MODEL=protolabs/fast      # default if unset
+```
+
+When enabled, you'll see `metadata.lm_op` and `metadata.lm_overrode_kw=true`
+on traces where the LM disagreed with the keyword pick. Use that filter
+to find prompts where the LM judgment was load-bearing — those are
+candidates for new keyword patterns.
+
+Cached by `(prompt, has_init_image, n_ref_images)` for the lifetime of
+the process; an LM disambiguating "remove that thing" once per session
+is enough.
+
+Failure modes (LM unreachable, malformed JSON, unknown op string) all
+fall back to the keyword pick silently. The keyword classifier is
+authoritative when the LM is missing or broken.
+
 ## Working without Langfuse
 
 Tracing being optional matters because protoBanana ships in three contexts:
