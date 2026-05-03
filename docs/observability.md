@@ -1,0 +1,90 @@
+# Observability — Langfuse tracing
+
+protoBanana emits structured traces via [Langfuse](https://langfuse.com) for every gateway entry point and every ComfyUI HTTP call. **Tracing is optional** — the package works without Langfuse installed or configured. When enabled, you get a tree per request that shows where the time went, what workflow ran, and what came back.
+
+## What you get
+
+For each `/v1/chat/completions` request to `protolabs/qwen-image-chat`:
+
+```
+protobanana.acompletion                    [parent]
+├── protobanana.classify_operation         [classify intent → op]
+└── (route runs here — gen | edit | multiref | bgremove)
+    ├── comfyui.upload                     [if route uses init image]
+    ├── comfyui.submit                     [→ prompt_id]
+    ├── comfyui.wait_for_completion        [polling — usually the bulk of latency]
+    └── comfyui.fetch_image                [→ size_bytes]
+```
+
+For `/v1/images/generations` and `/v1/images/edits` the parent span is `protobanana.aimage_generation` / `protobanana.aimage_edit` respectively, with the same ComfyUI sub-spans below.
+
+### Span metadata
+
+| Span | Captures |
+|---|---|
+| `protobanana.acompletion` | model, prompt (truncated to 500 chars), n_messages, n_images_in_history, operation (after classify), output: `{size_bytes, sha256_12}` |
+| `protobanana.aimage_generation` | model, workflow_stem, prompt, n, size, output |
+| `protobanana.aimage_edit` | model, workflow_stem, route (edit / bgremove / multiref), prompt, init_size_bytes, output |
+| `protobanana.classify_operation` | prompt (200 chars), has_init_image, n_ref_images, output: `{operation}` |
+| `comfyui.upload` | size_bytes |
+| `comfyui.submit` | workflow_stem, seed, prompt_id |
+| `comfyui.wait_for_completion` | prompt_id |
+| `comfyui.fetch_image` | prompt_id, size_bytes |
+
+Image bytes are summarized as `{size_bytes, sha256_12}` rather than logged in full — full payloads bloat traces and are reproducible from the request anyway.
+
+## Enabling tracing
+
+### 1. Install with the `tracing` extra
+
+```bash
+pip install 'protobanana[tracing]'
+```
+
+This pulls in `langfuse>=3.0,<4` plus its OpenTelemetry transitive deps.
+
+### 2. Export Langfuse credentials
+
+```bash
+export LANGFUSE_PUBLIC_KEY="pk-lf-..."
+export LANGFUSE_SECRET_KEY="sk-lf-..."
+export LANGFUSE_HOST="https://your-langfuse.example.com"   # or cloud.langfuse.com
+```
+
+That's it. protoBanana detects the keys at first use and starts emitting spans. If `LANGFUSE_PUBLIC_KEY` is unset, the no-op span path runs — zero overhead, zero deps loaded.
+
+### 3. Verify it's on
+
+```python
+from protobanana._tracing import is_enabled
+print(is_enabled())   # True if both extra is installed AND key is set
+```
+
+For verbose boot logging set `PROTOBANANA_TRACING_DEBUG=1` before import — protoBanana logs whether tracing is on and (if not) why.
+
+## Recommended Langfuse views
+
+In the Langfuse UI, useful filters when debugging:
+
+- **By operation:** filter `metadata.operation = "edit"` to see only edit traces — quickly compare latency distributions across ops
+- **By workflow:** filter `metadata.workflow_stem = "qwen_image_edit_2511"` when debugging a specific workflow's behavior after a ComfyUI / model upgrade
+- **Slow requests:** sort `protobanana.acompletion` traces by duration descending; the `comfyui.wait_for_completion` child is almost always the long pole
+- **Failed requests:** filter `level = "ERROR"` — exception type appears in the trace
+
+## Interaction with LiteLLM's own Langfuse callback
+
+The protoLabs gateway has LiteLLM's `success_callback: ["langfuse", "prometheus"]` enabled, which emits **its own** trace per `/v1/chat/completions` request. Those traces are siblings of ours, not parents — Langfuse v3 doesn't support cross-process span adoption out of the box, and LiteLLM's callback doesn't surface a `trace_id` we can adopt.
+
+So you'll see two traces per chat request: one from LiteLLM (request/response shape, model name, token counts) and one from protoBanana (operation, workflow, ComfyUI timings). The duplication is real but not noisy in practice — they capture different layers and Langfuse's filters let you scope to whichever you're debugging.
+
+If this becomes a problem (e.g. trace billing), the next iteration would pass LiteLLM's trace context through to our spans via the callback hook.
+
+## Working without Langfuse
+
+Tracing being optional matters because protoBanana ships in three contexts:
+
+- The protoLabs gateway → Langfuse on, full coverage
+- HuggingFace Spaces → no Langfuse, no-op everything
+- Local dev → typically no Langfuse, no-op everything
+
+The no-op span exposes `update`, `update_output`, `id`, `trace_id` so call-sites stay clean — no `if span:` guards in any route or provider entry point.
