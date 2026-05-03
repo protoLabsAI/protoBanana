@@ -45,6 +45,9 @@ DEFAULT_MODEL_CHAT = os.environ.get(
 DEFAULT_MODEL_BGREMOVE = os.environ.get(
     "PROTOBANANA_MODEL_BGREMOVE", "protolabs/qwen-image-bgremove"
 )
+DEFAULT_MODEL_REGION_EDIT = os.environ.get(
+    "PROTOBANANA_MODEL_REGION_EDIT", "protolabs/qwen-image-region-edit"
+)
 
 SIZES = ["1024x1024", "1216x832", "832x1216", "1456x624", "1088x1088", "1152x896"]
 
@@ -397,6 +400,57 @@ def fn_chat_clear():
     return [], "", None
 
 
+def fn_region_edit(
+    init_image,
+    grounding: str,
+    edit_prompt: str,
+    seed: float,
+    gateway_url: str,
+    api_key: str,
+    model: str,
+):
+    """Hit /v1/images/edits with the region_edit alias.
+
+    Two textboxes instead of one because that's the *natural* shape
+    of region editing: SAM 3 needs to know WHAT to mask, the model
+    needs to know WHAT IT SHOULD BECOME. Trying to cram both into a
+    single 'change the X to Y' prompt loses information when the
+    splitter has to guess head nouns.
+
+    The grounding text is sent via extra_body['grounding']; the edit
+    instruction goes in `prompt`. The provider's aimage_edit reads
+    both when workflow_stem starts with `region_edit_`.
+    """
+    if init_image is None:
+        raise gr.Error("Upload an image.")
+    if not grounding.strip():
+        raise gr.Error("Enter what to mask (e.g. 'the hat', 'her shirt').")
+    if not edit_prompt.strip():
+        raise gr.Error("Enter what it should become (e.g. 'a red bowling cap').")
+
+    client = _client(gateway_url, api_key)
+    t0 = time.time()
+    buf = io.BytesIO()
+    init_image.save(buf, format="PNG")
+    buf.seek(0)
+    extra: dict[str, Any] = {"grounding": grounding.strip()}
+    if (s := _seed_int(seed)) is not None:
+        extra["seed"] = s
+    resp = client.images.edit(
+        model=model,
+        prompt=edit_prompt.strip(),
+        image=buf,
+        response_format="b64_json",
+        extra_body=extra,
+    )
+    img = _bytes_to_pil(_b64_to_bytes(resp.data[0].b64_json))
+    info = (
+        f"**model**: `{model}`  ·  **mask**: `{grounding}`  ·  "
+        f"**edit**: `{edit_prompt[:50]}`  ·  **wall**: `{time.time() - t0:.1f}s`"
+    )
+    return img, info
+
+
 def fn_bgremove(
     init_image,
     gateway_url: str,
@@ -478,9 +532,9 @@ def build_app() -> gr.Blocks:
     with gr.Blocks(title="protoBanana — test & eval", css=css) as app:
         gr.Markdown(
             "# 🍌 protoBanana — test & eval\n"
-            "Quick UI over the protoBanana gateway. Five tabs cover the "
-            "Phase 1-3 operations (gen, edit, multi-ref, sticker) plus a "
-            "**Chat** tab that exercises the multi-turn auto-routing path."
+            "Quick UI over the protoBanana gateway. Six tabs cover the "
+            "Phase 1-4 operations (gen, edit, multi-ref, sticker, region edit) "
+            "plus a **Chat** tab that exercises the multi-turn auto-routing path."
         )
 
         with gr.Accordion("⚙️ Settings (gateway URL + API key + model overrides)", open=False):
@@ -508,6 +562,10 @@ def build_app() -> gr.Blocks:
                 )
                 model_bgremove = gr.Textbox(
                     label="BG-remove model alias", value=DEFAULT_MODEL_BGREMOVE
+                )
+            with gr.Row():
+                model_region_edit = gr.Textbox(
+                    label="Region-edit model alias", value=DEFAULT_MODEL_REGION_EDIT
                 )
 
         # ---- Tab: Generate ------------------------------------------
@@ -593,6 +651,40 @@ def build_app() -> gr.Blocks:
                 fn=fn_bgremove,
                 inputs=[b_init, gateway_url, api_key, model_bgremove],
                 outputs=[b_out, b_info],
+            )
+
+        # ---- Tab: Region edit (SAM 3 grounding, isolated test) -------
+        with gr.Tab("🎯 Region edit"):
+            gr.Markdown(
+                "Text-grounded inpaint. SAM 3 masks the named region; "
+                "Qwen-Image-Edit-2511 paints inside; the rest of the image is "
+                "preserved exactly via composite. Two text fields because "
+                "*what to mask* and *what it becomes* are different things."
+            )
+            with gr.Row():
+                with gr.Column(scale=1):
+                    re_init = gr.Image(label="Init image", type="pil", height=384)
+                    re_grounding = gr.Textbox(
+                        label="What to mask (SAM 3 grounding text)",
+                        placeholder="the hat, her shirt, the umbrella, the man's tie",
+                    )
+                    re_edit_prompt = gr.Textbox(
+                        label="What it should become (edit prompt)",
+                        placeholder="a red bowling cap, a blue silk shirt, a parasol",
+                    )
+                    with gr.Row():
+                        re_seed = gr.Number(label="Seed (blank = random)", value=None, precision=0)
+                    re_btn = gr.Button("Region edit", variant="primary")
+                with gr.Column(scale=1):
+                    re_out = gr.Image(label="Result", height=512)
+                    re_info = gr.Markdown(elem_classes=["protobanana-info"])
+            re_btn.click(
+                fn=fn_region_edit,
+                inputs=[
+                    re_init, re_grounding, re_edit_prompt, re_seed,
+                    gateway_url, api_key, model_region_edit,
+                ],
+                outputs=[re_out, re_info],
             )
 
         # ---- Tab: Chat (the auto-routing UX) -------------------------
