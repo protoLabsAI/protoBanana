@@ -58,8 +58,8 @@ Convention across protoBanana workflows:
 | `3` | `KSampler` | Sampler — substitute `seed`, `steps`, `cfg` |
 | `4` | `LoadImage` | Init image (single-image workflows) — substitute `image` filename |
 | `5` | `EmptySD3LatentImage` / `EmptyLatentImage` | Canvas — substitute `width`, `height` |
-| `6` | `CLIPTextEncode` | Positive prompt |
-| `7` | `CLIPTextEncode` | Negative prompt |
+| `6` | `TextEncodeQwenImageEditPlus` (edit/multiref) **or** `CLIPTextEncode` (gen/bgremove) | Positive prompt — see below |
+| `7` | `TextEncodeQwenImageEditPlus` (edit/multiref) **or** `CLIPTextEncode` (gen/bgremove) | Negative prompt |
 | `8` | `VAEDecode` | Decoder (rarely substituted) |
 | `9` | `SaveImage` | Output (rarely substituted) |
 | `10`-`19` | (model-specific) | E.g. RMBG node, BiRefNet node, etc. |
@@ -73,6 +73,34 @@ Convention across protoBanana workflows:
 
 Following this convention means existing routes can sometimes work without
 modification; deviating means you write a new `substitute()`.
+
+#### Choosing between `TextEncodeQwenImageEditPlus` and `CLIPTextEncode`
+
+For **anything that takes an input image and routes it into the model**
+(edit, multi-ref, region-edit, inpaint), use
+`TextEncodeQwenImageEditPlus` for both positive and negative encoders,
+and pipe the scaled input image into `image1` (and `image2`/`image3` for
+multi-ref). Both encoders should see the same image.
+
+For pure text-to-image (gen) or background-removal (which doesn't need
+text conditioning), use `CLIPTextEncode`.
+
+Why: `CLIPTextEncode` produces text-only conditioning. If you wire it
+into a workflow that loads an image and routes it through `VAEEncode →
+latent_image`, the input image has zero influence at `denoise=1.0`
+(the latent gets fully overwritten with noise). The model produces a
+fresh unrelated image. See [DECISIONS.md §0011](../DECISIONS.md) for
+the full incident.
+
+Field-name mapping:
+
+| Encoder | Prompt field |
+|---|---|
+| `CLIPTextEncode` | `text` |
+| `TextEncodeQwenImageEditPlus` | `prompt` |
+
+The `_set_prompt()` helper in `routes/edit.py` and `routes/multiref.py`
+writes to the right field based on the node's `class_type`.
 
 ### Step 4: Test the JSON standalone
 
@@ -185,6 +213,22 @@ Open the workflow in ComfyUI's UI to see the validation errors visually.
 
 Your terminal node isn't `SaveImage` (or compatible). Check that the last
 node in the chain is `SaveImage` so its outputs include `images: [...]`.
+
+### Edit returns a fresh image, not a modification of the input
+
+The classic Qwen-Image-Edit conditioning bug. Symptoms: prompt is
+respected, output looks fine on its own, but it has nothing to do with
+your input image. The static validator passes — the workflow is
+syntactically valid.
+
+Cause: positive/negative encoders are `CLIPTextEncode` (text-only). The
+input image is loaded → scaled → VAE-encoded → `latent_image`, but with
+`denoise=1.0` that latent gets fully replaced with random noise. The
+model has no visual context.
+
+Fix: replace nodes 6 and 7 with `TextEncodeQwenImageEditPlus`, with the
+scaled image piped into `image1` on both. Run the e2e smoke test in
+[validating workflows](validating-workflows) to confirm.
 
 ### Substitution doesn't take effect
 

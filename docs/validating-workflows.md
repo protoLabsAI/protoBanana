@@ -62,6 +62,43 @@ When `COMFYUI_BASE_URL` is unset or ComfyUI isn't reachable, the test is skipped
 - Whether the workflow produces a *good* image. Static schema validation can't see semantic correctness — that's what benchmarks are for.
 - Whether the model files referenced (`qwen_image_2512_fp8_e4m3fn.safetensors` etc.) exist on disk. ComfyUI rejects at execute time with a clearer error there; not our problem to mirror.
 - Cross-workflow consistency (e.g. "all workflows use the same VAE filename"). Worth adding if it bites us; not yet.
+- **Whether the workflow's *meaning* matches the model loaded at the UNETLoader node.** This is the load-bearing gap and it bit us on Day 4 — see below.
+
+## Schema validation isn't enough — the e2e smoke
+
+The static validator answers *"will ComfyUI accept this graph"*. It cannot answer *"will the model actually do the work"*.
+
+Concrete example from `protoBanana#3`: the edit workflow used `CLIPTextEncode` (text-only) for positive/negative and routed the input image only through `VAEEncode → latent_image`. With `denoise=1.0`, the latent gets fully overwritten with random noise — so the model saw zero visual context and emitted a fresh unrelated image. **The validator passed every check** because the workflow was structurally valid: `CLIPTextEncode` is a real node, all required fields were set, no COMBO mismatches. The bug was *what the workflow meant relative to an instruction-edit model*. See [DECISIONS.md §0011](deep-dives/decisions) for the full ADR.
+
+The fix: an end-to-end smoke test against any workflow that takes an input image. Pattern:
+
+```python
+# 1. Build a recognizable input — solid color + identifiable shape
+img = Image.new("RGB", (768, 768), (220, 30, 30))
+ImageDraw.Draw(img).ellipse((192, 192, 576, 576), fill=(255, 255, 255))
+
+# 2. Submit the workflow with a prompt that should preserve the structure
+wf = substitute(
+    loader.load("edit_qwen_image_2511"),
+    prompt="change the white circle to a yellow star, keep the red background",
+    seed=42,
+    image_filename=fname,
+)
+out = await client.fetch_image_bytes(await client.wait_for_completion(...))
+
+# 3. Numeric assertion: dominant colour preserved => input was respected
+out_img = Image.open(io.BytesIO(out)).convert("RGB").resize((64, 64))
+avg_r = sum(p[0] for p in out_img.getdata()) / 4096
+assert avg_r > 150  # red-dominant — input not ignored
+```
+
+Run this whenever:
+
+- You add a new edit-class workflow
+- You change conditioning topology (which encoder → KSampler)
+- You upgrade the underlying model (e.g. Qwen-Image-Edit 2511 → next version)
+
+The script lives next to the validator at `scripts/validate_workflows.py`-adjacent (informal — promote to a proper `tests/integration/test_e2e_edit.py` once we have a managed ComfyUI test endpoint).
 
 ## Lessons that drove this
 

@@ -6,6 +6,106 @@
 
 ---
 
+## 0012 — Static workflow validator + e2e smoke as the pre-merge gate
+
+**2026-05-03** · Status: accepted
+
+**Context.** Three predecessor incidents took the gateway alias offline:
+
+1. `_meta` top-level key crashed ComfyUI as an orphan node (PR #50)
+2. `ImageScaleToTotalPixels` silently added `resolution_steps` as required
+3. `edit_qwen_image_2511.json` shipped with `CLIPTextEncode` instead of
+   `TextEncodeQwenImageEditPlus` — the workflow was syntactically valid,
+   submitted cleanly, returned an image; the image just had nothing to
+   do with the input (the conditioning bug, see ADR 0011)
+
+The first two are pure schema mismatches. The third is a semantic bug —
+the workflow is structurally fine, but the *meaning* is wrong: text-only
+conditioning routed to an instruction-edit model. Static validation can
+never catch the third.
+
+**Decision.** Two-tier pre-merge gate:
+
+- **Static validator** (`scripts/validate_workflows.py`) hits ComfyUI's
+  `/object_info` and asserts: every node has a real `class_type`, every
+  required input is present, every COMBO value is in the allowed list.
+  Runtime-substituted fields (e.g. `LoadImage.image` placeholders) are
+  whitelisted via `_RUNTIME_SUBSTITUTED`. Catches schema drift.
+
+- **E2E smoke** (one-off submission with a known-recognizable input,
+  visual or numeric assertion on the output). For edit-shaped workflows:
+  red square + white circle + prompt that should preserve the background.
+  Output's average RGB confirms input was respected. Catches semantic bugs.
+
+Static is fast (<1s) and runs in pytest with `COMFYUI_BASE_URL`. E2E is
+slower (~20s per submission) and lives as a documented script + checklist
+item in DECISIONS / `validating-workflows.md`, not blocking CI yet.
+
+**Consequences.**
+- ✅ Schema-class bugs blocked at PR-time (caught the BiRefNet `class_type`
+  bug on first run)
+- ✅ Semantic bugs caught before user reports (would have caught the
+  conditioning bug if the e2e step had existed)
+- ✅ Documents the gap explicitly so we don't pretend the validator is
+  enough
+- ❌ E2E smoke isn't automated yet — relies on the dev to run it. Worth
+  promoting to CI once we have a managed ComfyUI test endpoint.
+- ❌ Validator depends on a live ComfyUI; can't run in pure-unit CI.
+  Mitigated by graceful skip when `COMFYUI_BASE_URL` is unset.
+
+---
+
+## 0011 — `TextEncodeQwenImageEditPlus` is the only correct conditioning path for edit/multiref
+
+**2026-05-03** · Status: accepted
+
+**Context.** Initial `edit_qwen_image_2511.json` and
+`multiref_qwen_image_2511.json` used the generic SDXL-era pattern:
+
+```
+LoadImage → ImageScale → VAEEncode → KSampler(latent_image)
+CLIPTextEncode("the prompt") → KSampler(positive)
+CLIPTextEncode("negative")  → KSampler(negative)
+```
+
+This is correct for SDXL/SD3-style img2img where the input image acts as
+a noisy starting point and `denoise < 1.0` preserves some of it. It is
+**wrong** for Qwen-Image-Edit, where:
+
+- The model expects the image as **visual conditioning** (encoded via
+  the Qwen2.5-VL vision tower, attended to during denoising), not as a
+  noisy latent.
+- The published example workflows always run `denoise=1.0` — the
+  `latent_image` provides spatial dimensions, but the actual edit
+  signal comes from the text-encoder branch with the image attached.
+
+With our broken pattern: at `denoise=1.0` the latent_image is fully
+re-noised, and `CLIPTextEncode` only sees text. Net result: zero image
+conditioning → fresh unrelated output → user-visible "edit produced a
+new image."
+
+**Decision.** Both edit and multiref use `TextEncodeQwenImageEditPlus`
+on positive AND negative encoders, with the scaled input image piped
+into `image1` (and `image2`/`image3` for multiref). The negative
+encoder receives the same image so the model has consistent visual
+context across both conditioning streams.
+
+**Consequences.**
+- ✅ Edit actually edits — input image is respected, output is a
+  modified version
+- ✅ Same encoder shape works for 1-3 images via image1/2/3 — keeps
+  edit and multiref symmetric
+- ✅ Documents that "looks like img2img" is a misleading shape for
+  instruction-edit models — important for any future edit-class model
+  we adopt
+- ❌ `_set_prompt()` helper introduces a small branch (write to
+  `prompt` for Qwen edit encoders, `text` for legacy CLIPTextEncode).
+  Acceptable: workflows that haven't migrated keep working.
+- ❌ The bug shipped to production for ~2 days. Caught by user
+  testing in the Gradio app, not by tests. Drove ADR 0012.
+
+---
+
 ## 0010 — Standalone repo extraction (`protoBanana`)
 
 **2026-05-03** · Status: accepted
