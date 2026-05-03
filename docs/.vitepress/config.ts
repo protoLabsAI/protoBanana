@@ -20,98 +20,120 @@ export default defineConfig({
     ["meta", { property: "og:description", content: "Open-source counterpart to Google's Nano-Banana 2 / OpenAI's GPT-Image-2, served as an OpenAI-compatible LiteLLM provider on top of ComfyUI." }],
   ],
 
+  // -----------------------------------------------------------------
+  // Sidebar is organised by Diátaxis (https://diataxis.fr): four
+  // quadrants, four user intents.
+  //
+  //   Tutorials   → learning-oriented (start here, hands-on path)
+  //   How-to      → task-oriented ("how do I X?")
+  //   Reference   → information-oriented (lookup tables, schemas)
+  //   Explanation → understanding-oriented (the why)
+  //
+  // Existing pages are mapped into these quadrants without renaming
+  // the files (preserves URLs + the auto-copied deep-dives/ tree).
+  // The /diataxis page summarises the map; gaps (e.g. tutorials
+  // beyond the quickstart) are flagged there.
+  // -----------------------------------------------------------------
+
   themeConfig: {
     logo: "🍌",
     siteTitle: "protoBanana",
 
     nav: [
-      { text: "Guide", link: "/guide/quickstart" },
+      { text: "Tutorials", link: "/guide/quickstart" },
+      { text: "How-to", link: "/installation" },
       { text: "Reference", link: "/api" },
-      { text: "Architecture", link: "/architecture" },
-      { text: "Deep dives", link: "/deep-dives/proposal" },
+      { text: "Explanation", link: "/architecture" },
       { text: "0.1.0a", items: [
         { text: "Changelog", link: "/deep-dives/changelog" },
+        { text: "Diátaxis map", link: "/diataxis" },
         { text: "GitHub", link: "https://github.com/protoLabsAI/protoBanana" },
       ]},
     ],
 
     sidebar: {
-      "/guide/": [
+      // Default site sidebar: full diátaxis layout, all four quadrants
+      // visible at once. Used on /, /agent, /api, etc.
+      "/": [
         {
-          text: "Getting started",
+          text: "📘 Tutorials — start here",
           items: [
-            { text: "Quickstart", link: "/guide/quickstart" },
-            { text: "Installation", link: "/installation" },
-            { text: "Operating", link: "/operating" },
+            { text: "Quickstart (5 min)", link: "/guide/quickstart" },
           ],
         },
         {
-          text: "Using protoBanana",
+          text: "🛠 How-to guides — get a thing done",
           items: [
-            { text: "How-to recipes", link: "/deep-dives/howto" },
-            { text: "API reference", link: "/api" },
-            { text: "Gradio test/eval UI", link: "/gradio-app" },
+            { text: "Install protoBanana into a gateway", link: "/installation" },
+            { text: "Operate day-2", link: "/operating" },
+            { text: "Add a new ComfyUI workflow", link: "/workflows-cookbook" },
+            { text: "Validate workflows before shipping", link: "/validating-workflows" },
+            { text: "Enable the chat agent", link: "/agent" },
+            { text: "Enable Langfuse tracing", link: "/observability" },
+            { text: "Run the Gradio test/eval UI", link: "/gradio-app" },
           ],
         },
         {
-          text: "Extending",
+          text: "📑 Reference — lookup",
           items: [
-            { text: "Architecture", link: "/architecture" },
-            { text: "Intent router", link: "/intent-router" },
-            { text: "Workflows cookbook", link: "/workflows-cookbook" },
-            { text: "Chat agent", link: "/agent" },
-            { text: "Observability", link: "/observability" },
+            { text: "API (endpoints, request shapes)", link: "/api" },
+            { text: "Architecture (component map)", link: "/architecture" },
+            { text: "Keyword intent router (fallback)", link: "/intent-router" },
             { text: "Benchmarks", link: "/benchmarks" },
           ],
         },
-      ],
-      "/deep-dives/": [
         {
-          text: "Strategy & history",
+          text: "💡 Explanation — the why",
           items: [
-            { text: "Proposal", link: "/deep-dives/proposal" },
-            { text: "Phases roadmap", link: "/deep-dives/phases" },
-            { text: "How we got here (journey)", link: "/deep-dives/journey" },
+            { text: "Diátaxis map of these docs", link: "/diataxis" },
+            { text: "Proposal — strategic system design", link: "/deep-dives/proposal" },
+            { text: "Phases — what shipped + why", link: "/deep-dives/phases" },
+            { text: "Journey — how we got here", link: "/deep-dives/journey" },
             { text: "Decisions (ADRs)", link: "/deep-dives/decisions" },
-          ],
-        },
-        {
-          text: "Reference",
-          items: [
-            { text: "How-to recipes", link: "/deep-dives/howto" },
             { text: "Changelog", link: "/deep-dives/changelog" },
           ],
         },
       ],
-      "/": [
+      // Tutorial sidebar: focused, less noise, while the user is
+      // walking through the quickstart.
+      "/guide/": [
         {
-          text: "Getting started",
+          text: "📘 Tutorials",
           items: [
             { text: "Quickstart", link: "/guide/quickstart" },
-            { text: "Installation", link: "/installation" },
-            { text: "Operating", link: "/operating" },
           ],
         },
         {
-          text: "Reference",
+          text: "Next steps (how-to)",
           items: [
-            { text: "Architecture", link: "/architecture" },
-            { text: "Intent router", link: "/intent-router" },
-            { text: "API", link: "/api" },
-            { text: "Workflows cookbook", link: "/workflows-cookbook" },
-            { text: "Chat agent", link: "/agent" },
-            { text: "Gradio app", link: "/gradio-app" },
-            { text: "Observability", link: "/observability" },
-            { text: "Benchmarks", link: "/benchmarks" },
+            { text: "Full install", link: "/installation" },
+            { text: "Enable the chat agent", link: "/agent" },
+            { text: "Run the Gradio app", link: "/gradio-app" },
           ],
         },
+      ],
+      // Deep-dives view: explanation-heavy, for when the user is
+      // trying to understand decisions vs. follow steps.
+      "/deep-dives/": [
         {
-          text: "Strategy & history",
+          text: "💡 Explanation",
           items: [
             { text: "Proposal", link: "/deep-dives/proposal" },
-            { text: "Phases", link: "/deep-dives/phases" },
+            { text: "Phases roadmap", link: "/deep-dives/phases" },
             { text: "Journey", link: "/deep-dives/journey" },
-            { text: "Decisions", link: "/deep-dives/decisions" },
+            { text: "Decisions (ADRs)", link: "/deep-dives/decisions" },
+            { text: "Diátaxis map", link: "/diataxis" },
+          ],
+        },
+        {
+          text: "🛠 How-to (recipes)",
+          items: [
+            { text: "User-facing recipes", link: "/deep-dives/howto" },
+          ],
+        },
+        {
+          text: "📑 Reference",
+          items: [
             { text: "Changelog", link: "/deep-dives/changelog" },
           ],
         },
@@ -123,7 +145,7 @@ export default defineConfig({
     ],
 
     footer: {
-      message: "Apache-2.0 licensed.",
+      message: "Apache-2.0 licensed. Docs follow the <a href='https://diataxis.fr'>Diátaxis</a> framework.",
       copyright: "© 2026 protoLabsAI · Built by humans + Claude. Fork on <a href='https://github.com/protoLabsAI/protoBanana'>GitHub</a>.",
     },
 

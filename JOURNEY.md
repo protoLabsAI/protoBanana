@@ -6,7 +6,7 @@
 
 ---
 
-## Day 0 — The premise
+## The premise
 
 After the [compound-rlm](https://github.com/protoLabsAI/compound-rlm)
 research wrapped to a natural pause, the next experiment surface was
@@ -351,11 +351,12 @@ to `pip install protobanana && set custom_handler: protobanana.handler`.
 
 ---
 
-## Day 4 — the conditioning bug
+## The conditioning bug
 
-After 0.1.0a1 shipped the Gradio app, the user opened the Edit tab,
-uploaded an image, sent a prompt — and got back an image with no
-relationship to the input. Multi-ref had the same problem.
+After 0.1.0a1 shipped the Gradio app and we walked away thinking it
+was solid, the user opened the Edit tab, uploaded an image, sent a
+prompt — and got back an image with no relationship to the input.
+Multi-ref had the same problem.
 
 The workflows passed every test we had. The static validator (added the
 same day to gate exactly this kind of issue) said all 5 workflows were
@@ -404,9 +405,9 @@ grammatically-valid sentence with the wrong meaning.
 
 ---
 
-## Day 5 — phases 4-7 land, and the chat path becomes an agent
+## Phases 4-7 land, and the chat path becomes an agent
 
-After the conditioning fix shipped and the gateway started serving
+Once the conditioning fix shipped and the gateway started serving
 Edit / Sticker / Multi-ref correctly, the natural next step was the
 remaining ChatGPT-image-2 capabilities: region edit, inpaint, outpaint.
 What we discovered along the way changed the shape of the chat path
@@ -448,11 +449,11 @@ drift on a "change the white circle to a yellow star" run.
 
 ### The chat-path direction the user actually wanted
 
-Phase 6 (outpaint) and Phase 7 went in cleanly. Phase 7 as built
-was an "optional LM second-pass classifier" — fire the LM only when
-the keyword router picked the catch-all EDIT/GEN, let it refine to
-something more specific. It worked but felt minor. The user pushed
-back:
+Phase 6 (outpaint) and Phase 7 went in cleanly back-to-back. Phase 7
+as built was an "optional LM second-pass classifier" — fire the LM
+only when the keyword router picked the catch-all EDIT/GEN, let it
+refine to something more specific. It worked but felt minor. The
+user pushed back:
 
 > wait, no. i want an llm to be the router, we have protolabs/fast
 > to get quick feedback from and this would power the chat portion
@@ -509,7 +510,7 @@ import. The lesson: a real boot-and-poke smoke (spin litellm + hit
 an endpoint) would have caught both. Build-time imports give a
 false sense of safety on the integration surface.
 
-### Day 5 punchline
+### The prompt-anchoring bug
 
 The third deploy hit the actual user-facing UX:
 
@@ -537,10 +538,18 @@ prompts + examples; larger models don't.** When `protolabs/fast`
 isn't enough, `PROTOBANANA_AGENT_MODEL=protolabs/smart` (Qwen3.6-
 27B-FP8 thinking) is one env var away — no rebuild.
 
-By the end of Day 5, the chat agent owned the chat surface, all
-seven phases had shipped, and the deploys-after-deploys stack of
-fixes had made the gateway integration robust. The architecture
-reached a stable shape: keyword classifier as guaranteed fallback,
-LM agent as the production default, Langfuse tracing through
-LiteLLM's callback for now, fine-grained sub-spans deferred behind
-the v2 adapter.
+By the end of this session — a few hours of iteration, not days —
+the chat agent owned the chat surface, all seven phases had shipped,
+and the deploy-after-deploy stack of fixes had made the gateway
+integration robust. The architecture reached a stable shape:
+keyword classifier as guaranteed fallback, LM agent as the
+production default, Langfuse tracing through LiteLLM's callback for
+now, fine-grained sub-spans deferred behind the v2 adapter.
+
+The compressed timeline matters. Everything from the conditioning
+fix through the agent deploy through the prompt-anchoring follow-up
+landed inside a single working session, with the user
+running real chats against the live gateway between iterations and
+reporting back. That tight loop is why the JOURNEY reads less like
+a project history and more like a debugging conversation —
+because that's what it was.
