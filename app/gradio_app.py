@@ -45,6 +45,19 @@ HIDE_GATEWAY_URL = os.environ.get("PROTOBANANA_GATEWAY_URL_HIDDEN", "").lower() 
     "true",
     "yes",
 )
+# Comma-separated tab IDs to replace with a "disabled" notice — e.g.
+# `PROTOBANANA_DISABLE_TABS=multiref,region_edit`. Recognized IDs:
+# `generate`, `edit`, `multiref`, `bgremove`, `region_edit`, `outpaint`,
+# `inpaint`, `chat`. Useful when a workflow is known-broken on the
+# host's model variant or out of scope for the deployment.
+_disabled_tabs_raw = os.environ.get("PROTOBANANA_DISABLE_TABS", "")
+DISABLED_TABS: set[str] = {t.strip() for t in _disabled_tabs_raw.split(",") if t.strip()}
+# Optional human-readable note to show in place of disabled tabs. Falls
+# back to a generic message if unset.
+DISABLED_TABS_NOTE = os.environ.get(
+    "PROTOBANANA_DISABLE_TABS_NOTE",
+    "This workflow is disabled on this deployment.",
+)
 
 DEFAULT_MODEL_GEN = os.environ.get("PROTOBANANA_MODEL_GEN", "protolabs/qwen-image")
 DEFAULT_MODEL_EDIT = os.environ.get(
@@ -730,31 +743,37 @@ def build_app() -> gr.Blocks:
             )
 
         # ---- Tab: Multi-ref ------------------------------------------
-        with gr.Tab("🔀 Multi-ref"):
-            gr.Markdown(
-                "Combine 2-3 reference images. Hard cap at 3 (Qwen-Image-Edit-2511 ceiling). "
-                "Goes through the chat-completions path under the hood."
-            )
-            with gr.Row():
-                m_img1 = gr.Image(label="Reference 1", type="pil", height=256)
-                m_img2 = gr.Image(label="Reference 2", type="pil", height=256)
-                m_img3 = gr.Image(label="Reference 3 (optional)", type="pil", height=256)
-            m_prompt = gr.Textbox(
-                label="Compose instruction",
-                lines=2,
-                placeholder="put the character from image 1 in the outfit from image 2",
-            )
-            with gr.Accordion("Advanced", open=False):
-                m_seed = gr.Number(value=-1, label="Seed (-1 = random)")
-            m_btn = gr.Button("Compose", variant="primary")
-            with gr.Row():
-                m_out = gr.Image(label="Result", height=512)
-                m_info = gr.Markdown(elem_classes=["protobanana-info"])
-            m_btn.click(
-                fn=fn_multiref,
-                inputs=[m_prompt, m_img1, m_img2, m_img3, m_seed, gateway_url, api_key, model_multiref],
-                outputs=[m_out, m_info],
-            )
+        if "multiref" in DISABLED_TABS:
+            with gr.Tab("🔀 Multi-ref (disabled)"):
+                gr.Markdown(
+                    f"### Multi-ref is disabled on this deployment\n\n{DISABLED_TABS_NOTE}"
+                )
+        else:
+            with gr.Tab("🔀 Multi-ref"):
+                gr.Markdown(
+                    "Combine 2-3 reference images. Hard cap at 3 (Qwen-Image-Edit-2511 ceiling). "
+                    "Goes through the chat-completions path under the hood."
+                )
+                with gr.Row():
+                    m_img1 = gr.Image(label="Reference 1", type="pil", height=256)
+                    m_img2 = gr.Image(label="Reference 2", type="pil", height=256)
+                    m_img3 = gr.Image(label="Reference 3 (optional)", type="pil", height=256)
+                m_prompt = gr.Textbox(
+                    label="Compose instruction",
+                    lines=2,
+                    placeholder="put the character from image 1 in the outfit from image 2",
+                )
+                with gr.Accordion("Advanced", open=False):
+                    m_seed = gr.Number(value=-1, label="Seed (-1 = random)")
+                m_btn = gr.Button("Compose", variant="primary")
+                with gr.Row():
+                    m_out = gr.Image(label="Result", height=512)
+                    m_info = gr.Markdown(elem_classes=["protobanana-info"])
+                m_btn.click(
+                    fn=fn_multiref,
+                    inputs=[m_prompt, m_img1, m_img2, m_img3, m_seed, gateway_url, api_key, model_multiref],
+                    outputs=[m_out, m_info],
+                )
 
         # ---- Tab: BG remove ------------------------------------------
         with gr.Tab("🪄 Sticker / BG remove"):
