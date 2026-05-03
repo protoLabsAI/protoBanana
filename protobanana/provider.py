@@ -78,9 +78,13 @@ class ProtoBananaProvider(CustomLLM):
         width, height = (
             self._parse_size(size) if size else infer_size_from_prompt(prompt)
         )
-        workflow_stem = (
-            model.split("/", 1)[-1] if "/" in model else gen.DEFAULT_STEM
-        )
+        # LiteLLM may pass `model` either as `provider/stem` (chat
+        # completions retain the prefix) or as just `stem` (CustomLLM
+        # routing for images.* strips the prefix). Strip if present,
+        # then fall back only when truly empty — the previous "if `/` in
+        # model" check silently routed bare-name requests to the
+        # hardcoded gen workflow, breaking all non-default aliases.
+        workflow_stem = model.split("/", 1)[-1] or gen.DEFAULT_STEM
 
         async with self._client(api_base, client, timeout_s) as cy:
             async def _one() -> str:
@@ -121,9 +125,14 @@ class ProtoBananaProvider(CustomLLM):
         n = int(opts.get("n", 1))
         timeout_s = float(timeout or DEFAULT_TIMEOUT_S)
         init_bytes = self._coerce_image_to_bytes(image)
-        workflow_stem = (
-            model.split("/", 1)[-1] if "/" in model else edit.DEFAULT_STEM
-        )
+        # LiteLLM may pass `model` either as `provider/stem` (chat
+        # completions retain the prefix) or as just `stem` (CustomLLM
+        # routing for images.* strips the prefix). Strip if present,
+        # then fall back only when truly empty — the previous "if `/` in
+        # model" check silently routed every bare-name request to the
+        # hardcoded edit workflow, which is how the Sticker tab ended
+        # up loading the wrong stem.
+        workflow_stem = model.split("/", 1)[-1] or edit.DEFAULT_STEM
 
         async with self._client(api_base, client, timeout_s) as cy:
             async def _one() -> str:
