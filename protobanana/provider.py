@@ -36,13 +36,24 @@ from litellm.types.utils import (
 from protobanana._tracing import trace_span
 from protobanana.client import ComfyUIClient
 from protobanana.intents.keywords import (
+    DEFAULT_OUTPAINT_AMOUNT,
     DEFAULT_SIZE,
     Operation,
     classify_operation,
+    extract_outpaint_directions,
     extract_region_edit_parts,
     infer_size_from_prompt,
 )
-from protobanana.routes import bgremove, edit, gen, inpaint, multiref, region_edit
+from protobanana.intents.llm import classify_operation_lm
+from protobanana.routes import (
+    bgremove,
+    edit,
+    gen,
+    inpaint,
+    multiref,
+    outpaint,
+    region_edit,
+)
 from protobanana.workflows.loader import WorkflowLoader
 
 # Truncate prompts in trace inputs so a 10K-char prompt doesn't bloat
@@ -320,11 +331,31 @@ class ProtoBananaProvider(CustomLLM):
                     n_ref_images=len(init_images),
                     explicit_mask=False,  # phase 5 wires this
                 )
+                op_kw = op
+                # Optional LM second pass: only for the catch-all EDIT/GEN
+                # cases the keyword router lumps ambiguous prompts into.
+                # Specific ops (BGREMOVE/MULTIREF/REGION_EDIT/OUTPAINT/
+                # INPAINT) all fire on high-confidence keywords; the LM
+                # second guess would be wasted latency + hallucination
+                # risk.
+                if op in (Operation.EDIT, Operation.GEN):
+                    op_lm = classify_operation_lm(
+                        prompt,
+                        has_init_image=bool(init_images),
+                        n_ref_images=len(init_images),
+                    )
+                    if op_lm is not None and op_lm != op:
+                        classify_span.update(metadata={
+                            "kw_op": op_kw.value,
+                            "lm_op": op_lm.value,
+                            "lm_overrode_kw": True,
+                        })
+                        op = op_lm
                 classify_span.update_output({"operation": op.value})
 
             # Surface the dispatched op on the parent so traces can be
             # filtered by operation without drilling into the child.
-            parent.update(metadata={"operation": op.value})
+            parent.update(metadata={"operation": op.value, "kw_op": op_kw.value})
 
             async with self._client(api_base, client, timeout_s) as cy:
                 if op == Operation.BGREMOVE:
@@ -364,6 +395,30 @@ class ProtoBananaProvider(CustomLLM):
                         grounding_text=grounding_text,
                         edit_prompt=edit_prompt,
                         init_image_bytes=init_images[0],
+                        seed=opts.get("seed"),
+                        timeout_s=max(timeout_s, 240.0),
+                    )
+                elif op == Operation.OUTPAINT:
+                    dirs = extract_outpaint_directions(prompt)
+                    if dirs is None:
+                        # Classifier said OUTPAINT but no direction word
+                        # matched (rare — classifier requires a keyword).
+                        # Default to uniform pad on all sides so we don't
+                        # silently no-op.
+                        left = top = right = bottom = DEFAULT_OUTPAINT_AMOUNT
+                        parent.update(metadata={"outpaint_direction": "fallback_uniform"})
+                    else:
+                        left, top, right, bottom = dirs
+                        parent.update(metadata={
+                            "outpaint_left": left, "outpaint_top": top,
+                            "outpaint_right": right, "outpaint_bottom": bottom,
+                        })
+                    img_bytes = await outpaint.run(
+                        cy,
+                        self._loader,
+                        prompt=prompt,
+                        init_image_bytes=init_images[0],
+                        left=left, top=top, right=right, bottom=bottom,
                         seed=opts.get("seed"),
                         timeout_s=max(timeout_s, 240.0),
                     )

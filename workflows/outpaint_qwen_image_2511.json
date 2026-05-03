@@ -1,0 +1,82 @@
+{
+  "_doc": "Outpaint via Qwen-Image-Edit-2511. ImagePadForOutpaint adds blank pixels in the requested directions and emits an edge mask covering the new area. InpaintModelConditioning + noise_mask=true confines denoising to that mask, so the original image pixels pass through untouched while the model fills the new edges. Default feathering=24 px gives a soft seam between original and new content.",
+  "3": {
+    "inputs": {
+      "seed": 0,
+      "steps": 20,
+      "cfg": 4.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": ["37", 0],
+      "positive": ["22", 0],
+      "negative": ["22", 1],
+      "latent_image": ["22", 2]
+    },
+    "class_type": "KSampler"
+  },
+  "4": {
+    "inputs": {"image": "init.png"},
+    "class_type": "LoadImage"
+  },
+  "20": {
+    "inputs": {
+      "image": ["4", 0],
+      "left": 0,
+      "top": 0,
+      "right": 256,
+      "bottom": 0,
+      "feathering": 24
+    },
+    "class_type": "ImagePadForOutpaint"
+  },
+  "6": {
+    "inputs": {
+      "prompt": "continue the scene seamlessly into the new region",
+      "clip": ["38", 0],
+      "vae": ["39", 0],
+      "image1": ["20", 0]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus"
+  },
+  "7": {
+    "inputs": {
+      "prompt": "low quality, blurry, distorted, seam, edge artifact",
+      "clip": ["38", 0],
+      "vae": ["39", 0],
+      "image1": ["20", 0]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus"
+  },
+  "22": {
+    "inputs": {
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "vae": ["39", 0],
+      "pixels": ["20", 0],
+      "mask": ["20", 1],
+      "noise_mask": true
+    },
+    "class_type": "InpaintModelConditioning"
+  },
+  "8": {
+    "inputs": {"samples": ["3", 0], "vae": ["39", 0]},
+    "class_type": "VAEDecode"
+  },
+  "9": {
+    "inputs": {"filename_prefix": "protobanana-outpaint", "images": ["8", 0]},
+    "class_type": "SaveImage"
+  },
+  "37": {
+    "inputs": {"unet_name": "qwen_image_edit_2511_fp8mixed.safetensors", "weight_dtype": "default"},
+    "class_type": "UNETLoader"
+  },
+  "38": {
+    "inputs": {"clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors", "type": "qwen_image"},
+    "class_type": "CLIPLoader"
+  },
+  "39": {
+    "inputs": {"vae_name": "qwen_image_vae.safetensors"},
+    "class_type": "VAELoader"
+  }
+}
