@@ -210,6 +210,8 @@ class ProtoBananaProvider(CustomLLM):
             route_name = "multiref"
         elif workflow_stem.startswith("region_edit_"):
             route_name = "region_edit"
+        elif workflow_stem.startswith("outpaint_"):
+            route_name = "outpaint"
         elif workflow_stem.startswith("inpaint_"):
             # Inpaint stem requested but no mask supplied — caller bug,
             # but degrade gracefully to plain edit (model still has
@@ -306,6 +308,36 @@ class ProtoBananaProvider(CustomLLM):
                             grounding_text=grounding_text,  # type: ignore[arg-type]
                             edit_prompt=edit_prompt,  # type: ignore[arg-type]
                             init_image_bytes=init_bytes,
+                            negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
+                            seed=opts.get("seed"),
+                            workflow_stem=workflow_stem,
+                            timeout_s=max(timeout_s, 240.0),
+                        )
+                    elif route_name == "outpaint":
+                        # Caller supplies side amounts via extra_body
+                        # (left/top/right/bottom in pixels). Default to
+                        # uniform pad if none supplied so we don't
+                        # silently no-op.
+                        def _pad(name: str) -> int:
+                            v = opts.get(name) if opts else None
+                            if v is None:
+                                v = _kwargs.get(name)
+                            try:
+                                return max(0, int(v)) if v is not None else 0
+                            except (TypeError, ValueError):
+                                return 0
+                        left = _pad("left")
+                        top = _pad("top")
+                        right = _pad("right")
+                        bottom = _pad("bottom")
+                        if not any((left, top, right, bottom)):
+                            left = top = right = bottom = DEFAULT_OUTPAINT_AMOUNT
+                        img_bytes = await outpaint.run(
+                            cy,
+                            self._loader,
+                            prompt=prompt,
+                            init_image_bytes=init_bytes,
+                            left=left, top=top, right=right, bottom=bottom,
                             negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
                             seed=opts.get("seed"),
                             workflow_stem=workflow_stem,

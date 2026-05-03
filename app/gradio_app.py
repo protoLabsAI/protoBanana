@@ -62,6 +62,12 @@ DEFAULT_MODEL_REGION_EDIT = os.environ.get(
 DEFAULT_MODEL_MULTIREF = os.environ.get(
     "PROTOBANANA_MODEL_MULTIREF", "protolabs/qwen-image-multiref"
 )
+DEFAULT_MODEL_OUTPAINT = os.environ.get(
+    "PROTOBANANA_MODEL_OUTPAINT", "protolabs/qwen-image-outpaint"
+)
+DEFAULT_MODEL_INPAINT = os.environ.get(
+    "PROTOBANANA_MODEL_INPAINT", "protolabs/qwen-image-inpaint"
+)
 
 SIZES = ["1024x1024", "1216x832", "832x1216", "1456x624", "1088x1088", "1152x896"]
 
@@ -536,6 +542,89 @@ def fn_multiref(
     return _bytes_to_pil(img_bytes), info
 
 
+def fn_outpaint(
+    init_image,
+    prompt: str,
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+    seed: float,
+    gateway_url: str,
+    api_key: str,
+    model: str,
+):
+    if init_image is None:
+        raise gr.Error("Upload an image to extend.")
+    if not any((left, top, right, bottom)):
+        raise gr.Error("Set at least one side to a positive pixel amount.")
+    client = _client(gateway_url, api_key)
+    t0 = time.time()
+    buf = io.BytesIO()
+    init_image.save(buf, format="PNG")
+    buf.seek(0)
+    extra: dict[str, Any] = {
+        "left": int(left),
+        "top": int(top),
+        "right": int(right),
+        "bottom": int(bottom),
+    }
+    if (s := _seed_int(seed)) is not None:
+        extra["seed"] = s
+    resp = client.images.edit(
+        model=model,
+        prompt=prompt or "extend the scene naturally",
+        image=buf,
+        response_format="b64_json",
+        extra_body=extra,
+    )
+    img = _bytes_to_pil(_b64_to_bytes(resp.data[0].b64_json))
+    info = (
+        f"**model**: `{model}`  ·  **pads**: `L{int(left)} T{int(top)} R{int(right)} B{int(bottom)}`  ·  "
+        f"**wall**: `{time.time() - t0:.1f}s`"
+    )
+    return img, info
+
+
+def fn_inpaint(
+    init_image,
+    mask_image,
+    prompt: str,
+    seed: float,
+    gateway_url: str,
+    api_key: str,
+    model: str,
+):
+    if init_image is None:
+        raise gr.Error("Upload the source image.")
+    if mask_image is None:
+        raise gr.Error("Upload the mask (white = repaint, black = preserve).")
+    if not prompt:
+        raise gr.Error("Enter a prompt describing what to paint into the mask.")
+    client = _client(gateway_url, api_key)
+    t0 = time.time()
+    img_buf = io.BytesIO()
+    init_image.save(img_buf, format="PNG")
+    img_buf.seek(0)
+    mask_buf = io.BytesIO()
+    mask_image.save(mask_buf, format="PNG")
+    mask_buf.seek(0)
+    extra: dict[str, Any] = {}
+    if (s := _seed_int(seed)) is not None:
+        extra["seed"] = s
+    resp = client.images.edit(
+        model=model,
+        prompt=prompt,
+        image=img_buf,
+        mask=mask_buf,
+        response_format="b64_json",
+        extra_body=extra or None,
+    )
+    img = _bytes_to_pil(_b64_to_bytes(resp.data[0].b64_json))
+    info = f"**model**: `{model}`  ·  **wall**: `{time.time() - t0:.1f}s`"
+    return img, info
+
+
 # ---- App layout ---------------------------------------------------------
 
 
@@ -589,6 +678,13 @@ def build_app() -> gr.Blocks:
                 )
                 model_multiref = gr.Textbox(
                     label="Multi-ref model alias", value=DEFAULT_MODEL_MULTIREF
+                )
+            with gr.Row():
+                model_outpaint = gr.Textbox(
+                    label="Outpaint model alias", value=DEFAULT_MODEL_OUTPAINT
+                )
+                model_inpaint = gr.Textbox(
+                    label="Inpaint model alias", value=DEFAULT_MODEL_INPAINT
                 )
 
         # ---- Tab: Generate ------------------------------------------
@@ -708,6 +804,71 @@ def build_app() -> gr.Blocks:
                     gateway_url, api_key, model_region_edit,
                 ],
                 outputs=[re_out, re_info],
+            )
+
+        # ---- Tab: Outpaint -------------------------------------------
+        with gr.Tab("🖼️ Outpaint"):
+            gr.Markdown(
+                "Extend the canvas. Set per-side pixel amounts (0 = no extension on that side); "
+                "the prompt steers what fills in."
+            )
+            with gr.Row():
+                with gr.Column(scale=1):
+                    op_init = gr.Image(label="Source image", type="pil")
+                    op_prompt = gr.Textbox(
+                        label="Prompt", lines=2,
+                        placeholder="extend the scene naturally, matching lighting and style",
+                    )
+                    with gr.Row():
+                        op_left = gr.Slider(0, 1024, value=0, step=64, label="Left (px)")
+                        op_top = gr.Slider(0, 1024, value=256, step=64, label="Top (px)")
+                    with gr.Row():
+                        op_right = gr.Slider(0, 1024, value=0, step=64, label="Right (px)")
+                        op_bottom = gr.Slider(0, 1024, value=0, step=64, label="Bottom (px)")
+                    with gr.Accordion("Advanced", open=False):
+                        op_seed = gr.Number(value=-1, label="Seed (-1 = random)")
+                    op_btn = gr.Button("Outpaint", variant="primary")
+                with gr.Column(scale=1):
+                    op_out = gr.Image(label="Result", type="pil")
+                    op_info = gr.Markdown(elem_classes=["protobanana-info"])
+            op_btn.click(
+                fn=fn_outpaint,
+                inputs=[
+                    op_init, op_prompt,
+                    op_left, op_top, op_right, op_bottom,
+                    op_seed,
+                    gateway_url, api_key, model_outpaint,
+                ],
+                outputs=[op_out, op_info],
+            )
+
+        # ---- Tab: Inpaint --------------------------------------------
+        with gr.Tab("🩹 Inpaint"):
+            gr.Markdown(
+                "Brushed-mask inpaint. Upload the source image and a mask PNG (white = repaint, "
+                "black = preserve). The prompt describes what should appear inside the masked region."
+            )
+            with gr.Row():
+                with gr.Column(scale=1):
+                    ip_init = gr.Image(label="Source image", type="pil")
+                    ip_mask = gr.Image(label="Mask (white = repaint)", type="pil", image_mode="RGBA")
+                    ip_prompt = gr.Textbox(
+                        label="Prompt", lines=2,
+                        placeholder="a glass apple sitting on the table",
+                    )
+                    with gr.Accordion("Advanced", open=False):
+                        ip_seed = gr.Number(value=-1, label="Seed (-1 = random)")
+                    ip_btn = gr.Button("Inpaint", variant="primary")
+                with gr.Column(scale=1):
+                    ip_out = gr.Image(label="Result", type="pil")
+                    ip_info = gr.Markdown(elem_classes=["protobanana-info"])
+            ip_btn.click(
+                fn=fn_inpaint,
+                inputs=[
+                    ip_init, ip_mask, ip_prompt, ip_seed,
+                    gateway_url, api_key, model_inpaint,
+                ],
+                outputs=[ip_out, ip_info],
             )
 
         # ---- Tab: Chat (the auto-routing UX) -------------------------
