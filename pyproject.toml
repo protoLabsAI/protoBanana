@@ -42,6 +42,13 @@ gradio = [
 tracing = [
     "langfuse>=3.0,<4",
 ]
+# Tool-use agent — protobanana/agent.py + intents/llm.py call an
+# OpenAI-compatible LLM as the chat router + brain. Without this
+# extra the agent module returns None on every call (caller falls
+# back to the keyword classifier path).
+agent = [
+    "openai>=2.0,<3",
+]
 
 [project.urls]
 Homepage = "https://github.com/protoLabsAI/protoBanana"
