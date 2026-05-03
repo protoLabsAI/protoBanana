@@ -1,4 +1,4 @@
-"""Single-image instruction edit. Workflow stem: `edit_qwen_image_2511`."""
+"""Single-image instruction edit. Workflow stem: `qwen_image_edit_2511`."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 from protobanana.client import ComfyUIClient
 from protobanana.workflows.loader import WorkflowLoader
 
-DEFAULT_STEM = "edit_qwen_image_2511"
+DEFAULT_STEM = "qwen_image_edit_2511"
 
 
 def substitute(
@@ -19,7 +19,7 @@ def substitute(
     seed: int,
     image_filename: str,
 ) -> dict[str, Any]:
-    """Convention for edit_qwen_image_2511:
+    """Convention for qwen_image_edit_2511:
     node "4" LoadImage                  = init image filename (server-side)
     node "6" TextEncodeQwenImageEditPlus = positive (instruction + image1 ref)
     node "7" TextEncodeQwenImageEditPlus = negative (with same image1 ref)

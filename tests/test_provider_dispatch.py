@@ -82,7 +82,7 @@ def test_aimage_edit_default_stem_calls_edit_route(provider, monkeypatch):
     """Anything that's not a bgremove_* / multiref_* stem goes to edit.run."""
     edit_run, bg_run, multi_run = _patch_routes(monkeypatch)
     _run(provider.aimage_edit(
-        model="comfyui-qwen-image/edit_qwen_image_2511",
+        model="comfyui-qwen-image/qwen_image_edit_2511",
         prompt="make it blue",
         image=b"fake-input",
     ))
@@ -90,7 +90,7 @@ def test_aimage_edit_default_stem_calls_edit_route(provider, monkeypatch):
     assert bg_run.await_count == 0
     assert multi_run.await_count == 0
     kwargs = edit_run.await_args.kwargs
-    assert kwargs["workflow_stem"] == "edit_qwen_image_2511"
+    assert kwargs["workflow_stem"] == "qwen_image_edit_2511"
     assert kwargs["prompt"] == "make it blue"
 
 
@@ -135,7 +135,7 @@ def test_aimage_edit_bare_stem_no_slash_routes_correctly(provider, monkeypatch):
 def test_aimage_edit_bare_edit_stem_uses_passed_stem_not_default(provider, monkeypatch):
     """Bare edit-shaped stem (e.g. `qwen_image_edit_2511`) goes to
     edit.run with that exact stem, not the hardcoded DEFAULT_STEM
-    (which used to be `edit_qwen_image_2511` and would then 404 on
+    (which used to be `qwen_image_edit_2511` and would then 404 on
     a workflows/ tree using the homelab convention)."""
     edit_run, _, _ = _patch_routes(monkeypatch)
     _run(provider.aimage_edit(

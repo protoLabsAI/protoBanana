@@ -23,7 +23,7 @@ For every workflow JSON in `workflows/`:
 python scripts/validate_workflows.py
 
 # Different ComfyUI / different workflows dir / single file
-COMFYUI_BASE_URL=http://protolabs:8188 python scripts/validate_workflows.py workflows/edit_qwen_image_2511.json
+COMFYUI_BASE_URL=http://protolabs:8188 python scripts/validate_workflows.py workflows/qwen_image_edit_2511.json
 ```
 
 Exit code = number of failed workflows. Output looks like:
@@ -33,8 +33,8 @@ Exit code = number of failed workflows. Output looks like:
 [validator] checking 5 workflow(s)
   ✓ bgremove_birefnet.json
   ✓ bgremove_rmbg2.json
-  ✓ edit_qwen_image_2511.json
-  ✓ gen_qwen_image_2512.json
+  ✓ qwen_image_edit_2511.json
+  ✓ qwen_image_2512.json
   ✓ multiref_qwen_image_2511.json
 [validator] 5/5 workflows pass
 ```
@@ -79,7 +79,7 @@ ImageDraw.Draw(img).ellipse((192, 192, 576, 576), fill=(255, 255, 255))
 
 # 2. Submit the workflow with a prompt that should preserve the structure
 wf = substitute(
-    loader.load("edit_qwen_image_2511"),
+    loader.load("qwen_image_edit_2511"),
     prompt="change the white circle to a yellow star, keep the red background",
     seed=42,
     image_filename=fname,

@@ -136,8 +136,8 @@ the workflow's internal rescaling); only GEN uses inferred size.
 
 | Operation | Module | Notes |
 |---|---|---|
-| GEN | `routes.gen` | Default workflow `gen_qwen_image_2512` |
-| EDIT | `routes.edit` | Default workflow `edit_qwen_image_2511`. Single image. |
+| GEN | `routes.gen` | Default workflow `qwen_image_2512` |
+| EDIT | `routes.edit` | Default workflow `qwen_image_edit_2511`. Single image. |
 | MULTIREF | `routes.multiref` | Default workflow `multiref_qwen_image_2511`. 2-3 images. |
 | BGREMOVE | `routes.bgremove` | Default workflow `bgremove_birefnet`. Single image. |
 | REGION_EDIT (Phase 4) | (planned `routes.region_edit`) | Falls back to EDIT until Phase 4 ships |

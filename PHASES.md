@@ -18,7 +18,7 @@
 
 **Operation:** `GEN`, `EDIT` (auto-routes via chat-completions)
 
-**Workflows:** `gen_qwen_image_2512.json`, `edit_qwen_image_2511.json`
+**Workflows:** `qwen_image_2512.json`, `qwen_image_edit_2511.json`
 
 **Models:**
 - `Comfy-Org/Qwen-Image_ComfyUI/split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors` (~20 GB)
