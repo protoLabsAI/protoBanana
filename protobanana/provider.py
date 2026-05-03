@@ -208,6 +208,8 @@ class ProtoBananaProvider(CustomLLM):
             route_name = "bgremove"
         elif workflow_stem.startswith("multiref_"):
             route_name = "multiref"
+        elif workflow_stem.startswith("region_edit_"):
+            route_name = "region_edit"
         elif workflow_stem.startswith("inpaint_"):
             # Inpaint stem requested but no mask supplied — caller bug,
             # but degrade gracefully to plain edit (model still has
@@ -221,6 +223,37 @@ class ProtoBananaProvider(CustomLLM):
         else:
             route_name = "edit"
 
+        # region_edit needs (grounding_text, edit_prompt). Two ways the
+        # caller can supply both through OpenAI's /v1/images/edits shape
+        # (which only has `prompt` natively):
+        #   1. extra_body / optional_params.grounding = "the X" — explicit;
+        #      `prompt` is then the edit instruction.
+        #   2. Fall back to extract_region_edit_parts(prompt) — works if
+        #      the user typed "change the X to Y" naturally.
+        # If both fail (no grounding kwarg, no parseable pattern) use
+        # the prompt for both — SAM 3 is forgiving and Qwen has visual
+        # conditioning either way.
+        grounding_text: Optional[str] = None
+        edit_prompt: Optional[str] = None
+        if route_name == "region_edit":
+            grounding_text = opts.get("grounding") or _kwargs.get("grounding")
+            if grounding_text:
+                edit_prompt = prompt
+            else:
+                parts = extract_region_edit_parts(prompt)
+                if parts is not None:
+                    grounding_text, edit_prompt = parts
+                else:
+                    grounding_text, edit_prompt = prompt, prompt
+
+        trace_metadata = {
+            "model": model,
+            "workflow_stem": workflow_stem,
+            "route": route_name,
+        }
+        if route_name == "region_edit":
+            trace_metadata["grounding_text"] = grounding_text or ""
+            trace_metadata["edit_prompt"] = _truncate(edit_prompt or "", 200)
         with trace_span(
             "protobanana.aimage_edit",
             input={
@@ -229,11 +262,7 @@ class ProtoBananaProvider(CustomLLM):
                 "init_size_bytes": len(init_bytes),
                 "mask_size_bytes": len(mask_bytes) if mask_bytes is not None else 0,
             },
-            metadata={
-                "model": model,
-                "workflow_stem": workflow_stem,
-                "route": route_name,
-            },
+            metadata=trace_metadata,
         ) as span:
             async with self._client(api_base, client, timeout_s) as cy:
                 async def _one() -> str:
@@ -269,6 +298,18 @@ class ProtoBananaProvider(CustomLLM):
                             seed=opts.get("seed"),
                             workflow_stem=workflow_stem,
                             timeout_s=timeout_s,
+                        )
+                    elif route_name == "region_edit":
+                        img_bytes = await region_edit.run(
+                            cy,
+                            self._loader,
+                            grounding_text=grounding_text,  # type: ignore[arg-type]
+                            edit_prompt=edit_prompt,  # type: ignore[arg-type]
+                            init_image_bytes=init_bytes,
+                            negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
+                            seed=opts.get("seed"),
+                            workflow_stem=workflow_stem,
+                            timeout_s=max(timeout_s, 240.0),
                         )
                     else:
                         img_bytes = await edit.run(
