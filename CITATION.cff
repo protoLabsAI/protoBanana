@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+title: "protoBanana: OSS chat-native image generation + editing"
+type: software
+authors:
+  - name: "protoLabsAI"
+    email: "josh@protolabs.studio"
+repository-code: "https://github.com/protoLabsAI/protoBanana"
+url: "https://github.com/protoLabsAI/protoBanana"
+abstract: >
+  An open-source counterpart to Google's Nano-Banana / OpenAI's GPT-Image-2:
+  a LiteLLM CustomLLM provider that fronts ComfyUI workflows for unified
+  image generation, instruction edit, multi-reference compose, background
+  removal, region-aware edit, inpaint, and outpaint. Routed via OpenAI
+  /v1/chat/completions, /v1/images/generations, and /v1/images/edits.
+  Backed by Qwen-Image-2512 + Qwen-Image-Edit-2511 + Florence-2 + SAM 2.1
+  + BiRefNet/RMBG.
+license: Apache-2.0
+keywords:
+  - image generation
+  - image editing
+  - litellm
+  - comfyui
+  - qwen-image
+  - openai-compatible

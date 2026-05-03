@@ -1,0 +1,6 @@
+{
+  "_doc": "Background removal via BiRefNet (commercial-safe license, ~85% quality vs RMBG-2.0's 90%). Requires ComfyUI-RMBG custom node pack: https://github.com/1038lab/ComfyUI-RMBG",
+  "4": {"inputs": {"image": "init.png"}, "class_type": "LoadImage"},
+  "10": {"inputs": {"image": ["4", 0], "model": "BiRefNet-general", "sensitivity": 0.0, "process_res": 1024, "mask_blur": 0, "mask_offset": 0, "background": "Alpha", "invert_output": false, "refine_foreground": true}, "class_type": "RMBG"},
+  "9": {"inputs": {"filename_prefix": "protobanana-sticker", "images": ["10", 0]}, "class_type": "SaveImage"}
+}

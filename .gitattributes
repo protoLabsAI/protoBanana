@@ -1,0 +1,6 @@
+# Git LFS for large research artifacts
+trajectories/*.jsonl filter=lfs diff=lfs merge=lfs -text
+benchmarks/results/*.jsonl filter=lfs diff=lfs merge=lfs -text
+docs/content/figures/*.png filter=lfs diff=lfs merge=lfs -text
+docs/content/figures/*.jpg filter=lfs diff=lfs merge=lfs -text
+docs/content/figures/*.gif filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,60 @@
+[project]
+name = "protobanana"
+version = "0.1.0a0"
+description = "OSS chat-native image generation + editing on the protoLabs gateway (Qwen-Image + ComfyUI + LiteLLM CustomLLM)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+authors = [
+    { name = "protoLabsAI", email = "josh@protolabs.studio" },
+]
+keywords = ["image-generation", "image-editing", "litellm", "comfyui", "qwen-image", "openai-compatible"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Multimedia :: Graphics",
+]
+
+dependencies = [
+    "litellm>=1.83",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=1.0",
+    "ruff>=0.11",
+]
+
+[project.urls]
+Homepage = "https://github.com/protoLabsAI/protoBanana"
+Documentation = "https://github.com/protoLabsAI/protoBanana/tree/main/docs"
+Repository = "https://github.com/protoLabsAI/protoBanana"
+Issues = "https://github.com/protoLabsAI/protoBanana/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["protobanana"]
+
+[tool.hatch.build.targets.sdist]
+include = ["protobanana", "workflows", "README.md", "LICENSE", "CITATION.cff"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"

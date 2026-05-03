@@ -1,0 +1,166 @@
+# protoBanana
+
+> **OSS chat-native image generation + editing** — the open-source counterpart
+> to Google's Nano-Banana 2 / OpenAI's GPT-Image-2, served as an
+> OpenAI-compatible LiteLLM provider on top of ComfyUI.
+
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/status-Phase%201-orange.svg)](PHASES.md)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
+
+## What it is
+
+One gateway alias drives the full conversational image experience:
+
+- `protolabs/qwen-image` — text-to-image (`/v1/images/generations`)
+- `protolabs/qwen-image-edit` — image + instruction (`/v1/images/edits`)
+- `protolabs/qwen-image-chat` — multi-turn `"draw → now make it blue"`,
+  multi-reference compose, sticker / background removal — auto-routed per
+  turn from a chat-completions message stream
+
+Backed by Qwen-Image-2512 (gen) + Qwen-Image-Edit-2511 (edit, multi-ref) +
+BiRefNet/RMBG-2.0 (background removal). Phase 4-7 add Florence-2 + SAM 2.1
+(text-region edit), LanPaint (inpaint with brushed mask), outpaint, and an
+LM-based intent classifier.
+
+## Why this exists
+
+`Nano-Banana 2` and `GPT-Image-2` made conversational image editing
+mainstream. They're closed-source, hosted, and metered. **For organizations
+that can't or won't send their data to a third party**, the equivalent
+experience didn't exist as a single drop-in stack.
+
+protoBanana fills that gap. It's the same call shape (`/v1/chat/completions`
+with image output), the same UX ("draw a cat" → "now make it blue"),
+running entirely on local GPUs through your own LiteLLM gateway.
+
+## Headline numbers
+
+| | nano-banana 2 | protoBanana (Phase 1) |
+|---|:-:|:-:|
+| Operation auto-routing per chat turn | ✓ | ✓ |
+| Text-to-image | ✓ | ✓ |
+| Single-image instruction edit | ✓ | ✓ |
+| Multi-reference compose | up to 14 refs | up to **3** (Qwen-Image-Edit cap) |
+| Background removal / sticker | ✓ | ✓ (Phase 2) |
+| Text-region edit ("change the man's tie") | ✓ | Phase 4 (Florence-2 + SAM 2.1) |
+| Inpaint with brushed mask | ✓ | Phase 5 (LanPaint) |
+| Outpaint | ✓ | Phase 6 |
+| Hosted | yes | **no** — all local |
+| Cost per image | metered | electricity |
+
+See [PHASES.md](PHASES.md) for what's done vs queued.
+
+## Quickstart
+
+```bash
+# 1. Install into your LiteLLM gateway environment
+pip install git+https://github.com/protoLabsAI/protoBanana.git
+
+# 2. Add to LiteLLM config.yaml:
+model_list:
+  - model_name: protolabs/qwen-image
+    litellm_params:
+      model: protobanana/gen_qwen_image_2512
+      api_base: http://your-comfyui-host:8188
+    model_info: { mode: image_generation }
+
+  - model_name: protolabs/qwen-image-chat
+    litellm_params:
+      model: protobanana/chat
+      api_base: http://your-comfyui-host:8188
+    model_info: { mode: chat, supports_vision: true }
+
+litellm_settings:
+  custom_provider_map:
+    - { provider: "protobanana", custom_handler: "protobanana.handler" }
+
+# 3. Mount the workflows dir into the gateway container at /app/workflows
+#    (or set PROTOBANANA_WORKFLOWS_DIR)
+
+# 4. Hit it like any OpenAI image-gen endpoint
+curl -X POST http://your-gateway:4000/v1/chat/completions \
+  -H "Authorization: Bearer $KEY" \
+  -d '{"model":"protolabs/qwen-image-chat","messages":[
+    {"role":"user","content":"a cat in a hat, watercolor, portrait"}
+  ]}'
+```
+
+Returns an assistant message with a markdown-embedded `data:image/png;base64,...`
+URL — Open WebUI displays inline like a regular image attachment.
+
+See [docs/INSTALLATION.md](docs/INSTALLATION.md) for the full setup
+(ComfyUI install, model downloads + symlinks, GPU planning).
+
+## Architecture
+
+```
+                 OpenAI client (Open WebUI / protoCLI / curl)
+                          │
+                          ▼
+                    LiteLLM gateway
+                          │
+                          ▼
+                  ProtoBananaProvider
+                  (intent classifier)
+                          │
+            ┌─────────────┼─────────────┬──────────────┐
+            ▼             ▼             ▼              ▼
+           gen          edit         multiref       bgremove
+            │             │             │              │
+            └─────────────┴─────────────┴──────────────┘
+                          │
+                          ▼
+                    ComfyUIClient
+                  (HTTP transport)
+                          │
+                          ▼
+                       ComfyUI
+            (Qwen-Image-2512 / Qwen-Image-Edit-2511 /
+                 BiRefNet / RMBG-2.0 / [Phase 4-6: Florence-2, SAM 2.1, LanPaint])
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full breakdown.
+
+## Documentation
+
+| | |
+|---|---|
+| [PROPOSAL.md](PROPOSAL.md) | The strategic system design + why-this-shape |
+| [PHASES.md](PHASES.md) | The 7-phase roadmap with status, models needed, acceptance criteria |
+| [JOURNEY.md](JOURNEY.md) | How we got here — the full backfill (research → broken integrations → pivot to gateway) |
+| [HOWTO.md](HOWTO.md) | User-facing guide: prompting recipes, multi-ref tricks, intent keywords |
+| [docs/INSTALLATION.md](docs/INSTALLATION.md) | Full setup from a clean machine |
+| [docs/OPERATING.md](docs/OPERATING.md) | Day-2 ops: GPU planning, model swaps, troubleshooting |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Component breakdown + extension points |
+| [docs/WORKFLOWS-COOKBOOK.md](docs/WORKFLOWS-COOKBOOK.md) | How to add a new ComfyUI workflow |
+| [docs/INTENT-ROUTER.md](docs/INTENT-ROUTER.md) | How requests route to operations |
+| [docs/API.md](docs/API.md) | Client-facing API reference |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Quality + latency methodology |
+| [DECISIONS.md](DECISIONS.md) | Architectural decision records |
+| [CHANGELOG.md](CHANGELOG.md) | Per-version log |
+
+## Building on prior art
+
+protoBanana is a synthesis, not an invention. Credit:
+
+| Component | Source |
+|---|---|
+| Image gen + edit | [Qwen-Image](https://huggingface.co/Qwen/Qwen-Image), [Qwen-Image-Edit-2511](https://huggingface.co/Qwen/Qwen-Image-Edit-2511) (Alibaba) |
+| Background removal | [BiRefNet](https://github.com/ZhengPeng7/BiRefNet), [RMBG-2.0](https://huggingface.co/briaai/RMBG-2.0) (BRIA) |
+| Region segmentation (Phase 4) | [Florence-2](https://huggingface.co/microsoft/Florence-2-large) (Microsoft), [SAM 2.1](https://github.com/facebookresearch/sam2) (Meta) |
+| Universal inpaint (Phase 5) | [LanPaint](https://github.com/scraed/LanPaint) |
+| Bundled ComfyUI nodes | [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG) (1038lab) — RMBG/BiRefNet/SAM/Grounding |
+| LLM gateway | [LiteLLM](https://github.com/BerriAI/litellm) (BerriAI) |
+| Image runtime | [ComfyUI](https://github.com/comfyanonymous/ComfyUI) |
+| Original paradigm | [Nano-Banana 2](https://deepmind.google/) (Google), [GPT-Image-2](https://openai.com/) (OpenAI) |
+
+## License
+
+Apache-2.0. Workflows and node-pack dependencies retain their original
+licenses (see `workflows/<name>.json`'s `_doc` field for per-workflow
+notes — RMBG-2.0 is CC BY-NC 4.0 / non-commercial).
+
+## Citation
+
+See `CITATION.cff`.
