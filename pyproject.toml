@@ -1,6 +1,6 @@
 [project]
 name = "protobanana"
-version = "0.1.0a0"
+version = "0.1.0a1"
 description = "OSS chat-native image generation + editing on the protoLabs gateway (Qwen-Image + ComfyUI + LiteLLM CustomLLM)"
 readme = "README.md"
 license = "Apache-2.0"
@@ -29,6 +29,11 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=1.0",
     "ruff>=0.11",
+]
+gradio = [
+    "gradio>=5.6,<6",
+    "openai>=2.0,<3",
+    "pillow>=10.0",
 ]
 
 [project.urls]
