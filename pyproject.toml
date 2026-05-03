@@ -35,12 +35,22 @@ gradio = [
     "openai>=2.0,<3",
     "pillow>=10.0",
 ]
-# Langfuse tracing of provider entry points + ComfyUI sub-spans.
-# When unset, _tracing.py uses a no-op span and the package works
-# normally. Enable in deployments where Langfuse is configured by
-# installing this extra and exporting LANGFUSE_PUBLIC_KEY etc.
+# Langfuse SDK presence — required for our fine-grained span emission
+# AND for LiteLLM's own success_callback Langfuse integration when
+# protobanana is installed in the same venv as litellm.
+#
+# Pinned to v2 because LiteLLM (proxy-runtime) hard-pins
+# langfuse==2.59.7 and constructs Langfuse(sdk_integration=...) which
+# v3 dropped — installing v3 alongside LiteLLM breaks LiteLLM's
+# callback at proxy boot.
+#
+# Our _tracing.py uses v3's get_client/start_as_current_span; on v2
+# the import gracefully fails → fine-grained sub-spans no-op. Until
+# we ship a v2 adapter (see protoBanana issue tracking), this is the
+# safer trade: LiteLLM gets its (coarse) per-request traces, ours
+# stay quiet rather than break LiteLLM's.
 tracing = [
-    "langfuse>=3.0,<4",
+    "langfuse>=2.59,<3",
 ]
 # Tool-use agent — protobanana/agent.py + intents/llm.py call an
 # OpenAI-compatible LLM as the chat router + brain. Without this

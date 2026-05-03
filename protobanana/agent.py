@@ -85,12 +85,21 @@ def is_enabled() -> bool:
 
 
 def _build_lm_client():
-    """Lazy-create the OpenAI client used to call the routing LM. None
-    when disabled."""
+    """Lazy-create the **async** OpenAI client used to call the routing
+    LM. None when disabled.
+
+    AsyncOpenAI is mandatory: protoBanana runs inside LiteLLM's async
+    proxy, and the agent calls *back through that same gateway* to talk
+    to its routing model (PROTOBANANA_AGENT_BASE typically points at
+    http://localhost:4000/v1). A sync OpenAI client would block the
+    proxy's event loop while waiting on a response that needs the
+    same loop to be served — instant deadlock, no error, just spin.
+    Caught in production deploy: 2-minute hangs on every chat turn.
+    """
     if not is_enabled():
         return None
-    from openai import OpenAI
-    return OpenAI(
+    from openai import AsyncOpenAI
+    return AsyncOpenAI(
         base_url=os.environ["PROTOBANANA_AGENT_BASE"],
         api_key=os.environ.get("PROTOBANANA_AGENT_KEY") or "none",
     )
@@ -184,7 +193,7 @@ async def run(
                 metadata={"iteration": iteration},
             ) as iter_span:
                 try:
-                    rsp = lm.chat.completions.create(
+                    rsp = await lm.chat.completions.create(
                         model=model,
                         messages=agent_messages,
                         tools=TOOL_DEFINITIONS,

@@ -66,11 +66,12 @@ def test_agent_disabled_returns_none():
 
 def _enable_agent_with_lm(monkeypatch, lm_responses: list[_MockLMResponse]):
     """Helper: turn the agent on and stub the LM client to play back
-    ``lm_responses`` in order (one per iteration)."""
+    ``lm_responses`` in order (one per iteration). Uses AsyncMock since
+    the real client is AsyncOpenAI (await lm.chat.completions.create)."""
     monkeypatch.setenv("PROTOBANANA_AGENT_BASE", "http://localhost:99999/v1")
     monkeypatch.setenv("PROTOBANANA_AGENT_MODEL", "test-model")
     fake_client = MagicMock()
-    fake_client.chat.completions.create = MagicMock(side_effect=lm_responses)
+    fake_client.chat.completions.create = AsyncMock(side_effect=lm_responses)
     monkeypatch.setattr(agent_mod, "_build_lm_client", lambda: fake_client)
     return fake_client
 
@@ -195,7 +196,7 @@ def test_lm_call_failure_first_iter_returns_none(monkeypatch):
     fall back to the keyword path."""
     monkeypatch.setenv("PROTOBANANA_AGENT_BASE", "http://localhost:99999/v1")
     fake_client = MagicMock()
-    fake_client.chat.completions.create = MagicMock(side_effect=ConnectionError("nope"))
+    fake_client.chat.completions.create = AsyncMock(side_effect=ConnectionError("nope"))
     monkeypatch.setattr(agent_mod, "_build_lm_client", lambda: fake_client)
 
     result = _run(agent_mod.run(
@@ -212,12 +213,12 @@ def test_assistant_image_data_urls_stripped_from_history(monkeypatch):
     elided to a placeholder. Otherwise context blows up."""
     _enable_agent_with_lm(monkeypatch, [_MockLMResponse(content="ok")])
     fake_client = agent_mod._build_lm_client()  # already patched
-    # Re-patch to capture call args
+    # Re-patch to capture call args (still async)
     captured = {}
-    def _capture(*a, **kw):
+    async def _capture(*a, **kw):
         captured.update(kw)
         return _MockLMResponse(content="ok")
-    fake_client.chat.completions.create = MagicMock(side_effect=_capture)
+    fake_client.chat.completions.create = AsyncMock(side_effect=_capture)
 
     huge_data_url = "data:image/png;base64," + ("A" * 50000)
     messages = [
