@@ -1,14 +1,16 @@
 """Multi-reference compose (2-3 images). Workflow stem: `multiref_qwen_image_2511`.
 
-Qwen-Image-Edit-2511 supports up to 3 reference images, each encoded into its
-own latent and stacked as conditioning. The workflow uses parallel
-LoadImage → ImageResize → VAEEncode → ReferenceLatent chains.
+Qwen-Image-Edit-2511 supports up to 3 reference images via
+TextEncodeQwenImageEditPlus's image1/image2/image3 inputs. Each ref is
+loaded → scaled → fed into the same Plus encoder so the model sees all of
+them as conditioning (not just the first one as a latent init, which was
+the prior bug).
 
 Convention (matches multiref_qwen_image_2511.json):
   Node IDs 100, 101, 102 = LoadImage for ref 1, 2, 3
-  Node "6" CLIPTextEncode  = positive (instruction)
-  Node "7" CLIPTextEncode  = negative
-  Node "3" KSampler        = seed
+  Node "6" TextEncodeQwenImageEditPlus = positive (image1/2/3 + prompt)
+  Node "7" TextEncodeQwenImageEditPlus = negative (image1/2/3 + neg prompt)
+  Node "3" KSampler                    = seed
 
 Refs > 3 are silently truncated; the model degrades on >3 anyway.
 """
@@ -39,13 +41,23 @@ def substitute(
         node_id = str(100 + slot - 1)  # 100, 101, 102
         if node_id in workflow and workflow[node_id].get("class_type") == "LoadImage":
             workflow[node_id]["inputs"]["image"] = fname
-    if "6" in workflow and workflow["6"].get("class_type") == "CLIPTextEncode":
-        workflow["6"]["inputs"]["text"] = prompt
-    if "7" in workflow and workflow["7"].get("class_type") == "CLIPTextEncode":
-        workflow["7"]["inputs"]["text"] = negative_prompt
+    _set_prompt(workflow, "6", prompt)
+    _set_prompt(workflow, "7", negative_prompt)
     if "3" in workflow and workflow["3"].get("class_type") == "KSampler":
         workflow["3"]["inputs"]["seed"] = seed
     return workflow
+
+
+def _set_prompt(workflow: dict[str, Any], node_id: str, text: str) -> None:
+    """Write to `prompt` for TextEncodeQwenImageEdit*; `text` for CLIPTextEncode."""
+    if node_id not in workflow:
+        return
+    node = workflow[node_id]
+    ct = node.get("class_type", "")
+    if ct.startswith("TextEncodeQwenImageEdit"):
+        node["inputs"]["prompt"] = text
+    elif ct == "CLIPTextEncode":
+        node["inputs"]["text"] = text
 
 
 async def run(

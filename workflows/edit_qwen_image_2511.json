@@ -34,23 +34,39 @@
   },
   "6": {
     "inputs": {
-      "text": "make the cat blue",
+      "prompt": "make the cat blue",
       "clip": [
         "38",
         0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "image1": [
+        "14",
+        0
       ]
     },
-    "class_type": "CLIPTextEncode"
+    "class_type": "TextEncodeQwenImageEditPlus"
   },
   "7": {
     "inputs": {
-      "text": "low quality, blurry, distorted",
+      "prompt": "low quality, blurry, distorted",
       "clip": [
         "38",
         0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "image1": [
+        "14",
+        0
       ]
     },
-    "class_type": "CLIPTextEncode"
+    "class_type": "TextEncodeQwenImageEditPlus"
   },
   "8": {
     "inputs": {

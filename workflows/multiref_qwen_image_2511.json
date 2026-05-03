@@ -95,23 +95,55 @@
   },
   "6": {
     "inputs": {
-      "text": "blend the style of ref2 and the subject of ref1",
+      "prompt": "blend the style of ref2 and the subject of ref1",
       "clip": [
         "38",
         0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "image1": [
+        "110",
+        0
+      ],
+      "image2": [
+        "111",
+        0
+      ],
+      "image3": [
+        "112",
+        0
       ]
     },
-    "class_type": "CLIPTextEncode"
+    "class_type": "TextEncodeQwenImageEditPlus"
   },
   "7": {
     "inputs": {
-      "text": "low quality, blurry",
+      "prompt": "low quality, blurry",
       "clip": [
         "38",
         0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "image1": [
+        "110",
+        0
+      ],
+      "image2": [
+        "111",
+        0
+      ],
+      "image3": [
+        "112",
+        0
       ]
     },
-    "class_type": "CLIPTextEncode"
+    "class_type": "TextEncodeQwenImageEditPlus"
   },
   "8": {
     "inputs": {
