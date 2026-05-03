@@ -108,3 +108,60 @@ def test_aimage_edit_multiref_stem_routes_to_multiref(provider, monkeypatch):
     kwargs = multi_run.await_args.kwargs
     assert kwargs["init_image_bytes_list"] == [b"fake-input"]
     assert kwargs["workflow_stem"] == "multiref_qwen_image_2511"
+
+
+# ---- bare-name regression --------------------------------------------------
+#
+# LiteLLM strips the provider prefix before calling the CustomLLM handler
+# for /v1/images/{generations,edits}. These tests lock the bare-name case
+# so we never silently fall back to a hardcoded DEFAULT_STEM again. See the
+# Sticker "blue cat" incident — homelab-iac PR #56 thread.
+
+def test_aimage_edit_bare_stem_no_slash_routes_correctly(provider, monkeypatch):
+    """When LiteLLM passes just `bgremove_birefnet` (no provider prefix),
+    we must STILL dispatch to bgremove.run with that stem — not silently
+    fall back to edit.DEFAULT_STEM."""
+    edit_run, bg_run, _ = _patch_routes(monkeypatch)
+    _run(provider.aimage_edit(
+        model="bgremove_birefnet",  # no slash — LiteLLM stripped it
+        prompt="remove the background",
+        image=b"fake-input",
+    ))
+    assert bg_run.await_count == 1, "must dispatch to bgremove.run on bare stem"
+    assert edit_run.await_count == 0, "must NOT fall back to edit.DEFAULT_STEM"
+    assert bg_run.await_args.kwargs["workflow_stem"] == "bgremove_birefnet"
+
+
+def test_aimage_edit_bare_edit_stem_uses_passed_stem_not_default(provider, monkeypatch):
+    """Bare edit-shaped stem (e.g. `qwen_image_edit_2511`) goes to
+    edit.run with that exact stem, not the hardcoded DEFAULT_STEM
+    (which used to be `edit_qwen_image_2511` and would then 404 on
+    a workflows/ tree using the homelab convention)."""
+    edit_run, _, _ = _patch_routes(monkeypatch)
+    _run(provider.aimage_edit(
+        model="qwen_image_edit_2511",  # gateway convention
+        prompt="x",
+        image=b"i",
+    ))
+    assert edit_run.await_count == 1
+    assert edit_run.await_args.kwargs["workflow_stem"] == "qwen_image_edit_2511"
+
+
+def test_aimage_generation_bare_stem_no_slash_uses_passed_stem(provider, monkeypatch):
+    """Same regression for /v1/images/generations."""
+    fake_bytes = b"\x89PNG\r\nfake"
+    gen_run = AsyncMock(return_value=fake_bytes)
+    monkeypatch.setattr("protobanana.provider.gen.run", gen_run)
+    fake_cy = MagicMock()
+    fake_cy.__aenter__ = AsyncMock(return_value=fake_cy)
+    fake_cy.__aexit__ = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "protobanana.provider.ProtoBananaProvider._client",
+        lambda *_a, **_k: fake_cy,
+    )
+    _run(provider.aimage_generation(
+        model="qwen_image_2512",  # gateway convention, no slash
+        prompt="a cat",
+    ))
+    assert gen_run.await_count == 1
+    assert gen_run.await_args.kwargs["workflow_stem"] == "qwen_image_2512"
