@@ -122,6 +122,19 @@ See [docs/installation.md](docs/installation.md) for the full setup
 
 See [docs/architecture.md](docs/architecture.md) for the full breakdown.
 
+## Test/eval UI
+
+A Gradio app lives at `app/` — five tabs covering Generate, Edit,
+Multi-ref, Sticker, and Chat (multi-turn auto-routing). Runs anywhere
+with Python 3.11+; intended for local debugging AND HuggingFace Space
+deployment. See [app/README.md](app/README.md) and
+[docs/gradio-app.md](docs/gradio-app.md).
+
+```bash
+pip install -e ".[gradio]"
+GATEWAY_URL=http://your-gateway:4000/v1 GATEWAY_API_KEY=sk-... python -m app
+```
+
 ## Documentation
 
 | | |
@@ -130,11 +143,13 @@ See [docs/architecture.md](docs/architecture.md) for the full breakdown.
 | [PHASES.md](PHASES.md) | The 7-phase roadmap with status, models needed, acceptance criteria |
 | [JOURNEY.md](JOURNEY.md) | How we got here — the full backfill (research → broken integrations → pivot to gateway) |
 | [HOWTO.md](HOWTO.md) | User-facing guide: prompting recipes, multi-ref tricks, intent keywords |
+| [app/README.md](app/README.md) | Gradio test/eval UI — local + HF Space |
 | [docs/installation.md](docs/installation.md) | Full setup from a clean machine |
 | [docs/operating.md](docs/operating.md) | Day-2 ops: GPU planning, model swaps, troubleshooting |
 | [docs/architecture.md](docs/architecture.md) | Component breakdown + extension points |
 | [docs/workflows-cookbook.md](docs/workflows-cookbook.md) | How to add a new ComfyUI workflow |
 | [docs/intent-router.md](docs/intent-router.md) | How requests route to operations |
+| [docs/gradio-app.md](docs/gradio-app.md) | Test/eval UI architecture + HF Space deploy |
 | [docs/api.md](docs/api.md) | Client-facing API reference |
 | [docs/benchmarks.md](docs/benchmarks.md) | Quality + latency methodology |
 | [DECISIONS.md](DECISIONS.md) | Architectural decision records |
