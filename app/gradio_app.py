@@ -59,6 +59,9 @@ DEFAULT_MODEL_BGREMOVE = os.environ.get(
 DEFAULT_MODEL_REGION_EDIT = os.environ.get(
     "PROTOBANANA_MODEL_REGION_EDIT", "protolabs/qwen-image-region-edit"
 )
+DEFAULT_MODEL_MULTIREF = os.environ.get(
+    "PROTOBANANA_MODEL_MULTIREF", "protolabs/qwen-image-multiref"
+)
 
 SIZES = ["1024x1024", "1216x832", "832x1216", "1456x624", "1088x1088", "1152x896"]
 
@@ -584,6 +587,9 @@ def build_app() -> gr.Blocks:
                 model_region_edit = gr.Textbox(
                     label="Region-edit model alias", value=DEFAULT_MODEL_REGION_EDIT
                 )
+                model_multiref = gr.Textbox(
+                    label="Multi-ref model alias", value=DEFAULT_MODEL_MULTIREF
+                )
 
         # ---- Tab: Generate ------------------------------------------
         with gr.Tab("🎨 Generate"):
@@ -650,7 +656,7 @@ def build_app() -> gr.Blocks:
                 m_info = gr.Markdown(elem_classes=["protobanana-info"])
             m_btn.click(
                 fn=fn_multiref,
-                inputs=[m_prompt, m_img1, m_img2, m_img3, m_seed, gateway_url, api_key, model_chat],
+                inputs=[m_prompt, m_img1, m_img2, m_img3, m_seed, gateway_url, api_key, model_multiref],
                 outputs=[m_out, m_info],
             )
 

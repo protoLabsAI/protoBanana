@@ -351,21 +351,50 @@ class ProtoBananaProvider(CustomLLM):
         opts = optional_params or {}
         timeout_s = float(timeout or DEFAULT_TIMEOUT_S)
 
+        # Alias-driven short-circuit. When the caller picks a specific
+        # op alias (e.g. `protolabs/qwen-image-multiref`), they've
+        # already declared their intent — skip the agent + keyword
+        # classifier and dispatch straight to the matching route.
+        # `chat` (or empty) is the only stem that keeps the agent path:
+        # that's the one alias meant for free-form conversational use.
+        workflow_stem = model.split("/", 1)[-1] if "/" in model else model
+        forced_op: Optional[Operation] = None
+        if workflow_stem and workflow_stem != "chat":
+            if workflow_stem.startswith("multiref_"):
+                forced_op = Operation.MULTIREF
+            elif workflow_stem.startswith("bgremove_"):
+                forced_op = Operation.BGREMOVE
+            elif workflow_stem.startswith("region_edit_"):
+                forced_op = Operation.REGION_EDIT
+            elif workflow_stem.startswith("outpaint_"):
+                forced_op = Operation.OUTPAINT
+            elif workflow_stem.startswith("inpaint_"):
+                forced_op = Operation.INPAINT
+            elif workflow_stem.startswith("qwen_image_edit"):
+                forced_op = Operation.EDIT
+            elif workflow_stem == gen.DEFAULT_STEM:
+                forced_op = Operation.GEN
+
         with trace_span(
             "protobanana.acompletion",
             input={
                 "prompt": _truncate(prompt),
                 "n_images_in_history": len(init_images),
             },
-            metadata={"model": model, "n_messages": len(messages)},
+            metadata={
+                "model": model,
+                "n_messages": len(messages),
+                "forced_op": forced_op.value if forced_op else None,
+            },
         ) as parent:
-            # Agent-first dispatch (when configured). The LLM is the
-            # router AND the chat brain — it decides whether to call an
-            # image tool, chain several, or just reply conversationally.
-            # Returning None means the agent is disabled or its first
-            # LM call failed; we fall back to the keyword classifier
-            # path so the package keeps working without an LM.
-            if _agent.is_enabled():
+            # Agent-first dispatch (when configured AND no alias-forced
+            # op). The LLM is the router AND the chat brain — it decides
+            # whether to call an image tool, chain several, or just
+            # reply conversationally. Returning None means the agent is
+            # disabled or its first LM call failed; we fall back to the
+            # keyword classifier path so the package keeps working
+            # without an LM.
+            if _agent.is_enabled() and forced_op is None:
                 parent.update(metadata={"path": "agent"})
                 async with self._client(api_base, client, timeout_s) as cy:
                     agent_content = await _agent.run(
@@ -382,42 +411,50 @@ class ProtoBananaProvider(CustomLLM):
                 # first-iter failure. Drop to keyword path.
                 parent.update(metadata={"agent_fallback": True})
 
-            parent.update(metadata={"path": "keyword"})
-            with trace_span(
-                "protobanana.classify_operation",
-                input={"prompt": _truncate(prompt, 200)},
-                metadata={
-                    "has_init_image": bool(init_images),
-                    "n_ref_images": len(init_images),
-                },
-            ) as classify_span:
-                op = classify_operation(
-                    prompt,
-                    has_init_image=bool(init_images),
-                    n_ref_images=len(init_images),
-                    explicit_mask=False,  # phase 5 wires this
-                )
-                op_kw = op
-                # Optional LM second pass: only for the catch-all EDIT/GEN
-                # cases the keyword router lumps ambiguous prompts into.
-                # Specific ops (BGREMOVE/MULTIREF/REGION_EDIT/OUTPAINT/
-                # INPAINT) all fire on high-confidence keywords; the LM
-                # second guess would be wasted latency + hallucination
-                # risk.
-                if op in (Operation.EDIT, Operation.GEN):
-                    op_lm = classify_operation_lm(
+            if forced_op is not None:
+                # Caller declared the op via the model alias; no
+                # classification needed. Surface in the trace so the
+                # path is filterable.
+                parent.update(metadata={"path": "alias_forced"})
+                op = forced_op
+                op_kw = forced_op
+            else:
+                parent.update(metadata={"path": "keyword"})
+                with trace_span(
+                    "protobanana.classify_operation",
+                    input={"prompt": _truncate(prompt, 200)},
+                    metadata={
+                        "has_init_image": bool(init_images),
+                        "n_ref_images": len(init_images),
+                    },
+                ) as classify_span:
+                    op = classify_operation(
                         prompt,
                         has_init_image=bool(init_images),
                         n_ref_images=len(init_images),
+                        explicit_mask=False,  # phase 5 wires this
                     )
-                    if op_lm is not None and op_lm != op:
-                        classify_span.update(metadata={
-                            "kw_op": op_kw.value,
-                            "lm_op": op_lm.value,
-                            "lm_overrode_kw": True,
-                        })
-                        op = op_lm
-                classify_span.update_output({"operation": op.value})
+                    op_kw = op
+                    # Optional LM second pass: only for the catch-all EDIT/GEN
+                    # cases the keyword router lumps ambiguous prompts into.
+                    # Specific ops (BGREMOVE/MULTIREF/REGION_EDIT/OUTPAINT/
+                    # INPAINT) all fire on high-confidence keywords; the LM
+                    # second guess would be wasted latency + hallucination
+                    # risk.
+                    if op in (Operation.EDIT, Operation.GEN):
+                        op_lm = classify_operation_lm(
+                            prompt,
+                            has_init_image=bool(init_images),
+                            n_ref_images=len(init_images),
+                        )
+                        if op_lm is not None and op_lm != op:
+                            classify_span.update(metadata={
+                                "kw_op": op_kw.value,
+                                "lm_op": op_lm.value,
+                                "lm_overrode_kw": True,
+                            })
+                            op = op_lm
+                    classify_span.update_output({"operation": op.value})
 
             # Surface the dispatched op on the parent so traces can be
             # filtered by operation without drilling into the child.
