@@ -1,0 +1,90 @@
+{
+  "_doc": "Brushed-mask inpaint via Qwen-Image-Edit-2511. Caller supplies init image + mask (alpha PNG, white = edit region). Outside-mask pixels are preserved exactly via ImageCompositeMasked at the end. denoise=1.0 because the model conditions on the original via TextEncodeQwenImageEditPlus(image1=...) and the mask focuses denoising on the brushed region.",
+  "3": {
+    "inputs": {
+      "seed": 0,
+      "steps": 20,
+      "cfg": 4.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": ["37", 0],
+      "positive": ["22", 0],
+      "negative": ["22", 1],
+      "latent_image": ["22", 2]
+    },
+    "class_type": "KSampler"
+  },
+  "4": {
+    "inputs": {"image": "init.png"},
+    "class_type": "LoadImage"
+  },
+  "20": {
+    "inputs": {"image": "mask.png", "channel": "alpha"},
+    "class_type": "LoadImageMask"
+  },
+  "21": {
+    "inputs": {"mask": ["20", 0], "expand": 6, "tapered_corners": true},
+    "class_type": "GrowMask"
+  },
+  "6": {
+    "inputs": {
+      "prompt": "make the brushed region match this description",
+      "clip": ["38", 0],
+      "vae": ["39", 0],
+      "image1": ["4", 0]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus"
+  },
+  "7": {
+    "inputs": {
+      "prompt": "low quality, blurry, distorted",
+      "clip": ["38", 0],
+      "vae": ["39", 0],
+      "image1": ["4", 0]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus"
+  },
+  "22": {
+    "inputs": {
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "vae": ["39", 0],
+      "pixels": ["4", 0],
+      "mask": ["21", 0],
+      "noise_mask": true
+    },
+    "class_type": "InpaintModelConditioning"
+  },
+  "8": {
+    "inputs": {"samples": ["3", 0], "vae": ["39", 0]},
+    "class_type": "VAEDecode"
+  },
+  "23": {
+    "inputs": {
+      "destination": ["4", 0],
+      "source": ["8", 0],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": ["20", 0]
+    },
+    "class_type": "ImageCompositeMasked"
+  },
+  "9": {
+    "inputs": {"filename_prefix": "protobanana-inpaint", "images": ["23", 0]},
+    "class_type": "SaveImage"
+  },
+  "37": {
+    "inputs": {"unet_name": "qwen_image_edit_2511_fp8mixed.safetensors", "weight_dtype": "default"},
+    "class_type": "UNETLoader"
+  },
+  "38": {
+    "inputs": {"clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors", "type": "qwen_image"},
+    "class_type": "CLIPLoader"
+  },
+  "39": {
+    "inputs": {"vae_name": "qwen_image_vae.safetensors"},
+    "class_type": "VAELoader"
+  }
+}

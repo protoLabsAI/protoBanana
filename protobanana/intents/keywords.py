@@ -59,6 +59,91 @@ _REGION_EDIT_PATTERNS = [
     re.compile(r"\bonly\s+the\s+\w+\b", re.IGNORECASE),
 ]
 
+# Splitter patterns for region-edit prompts → (grounding_text, edit_prompt).
+# These run AFTER classify_operation has already returned REGION_EDIT, so
+# they only need to extract the parts; classification is somebody else's
+# job. Each capture group 1 = the thing to mask, group 2 (if present) =
+# what it should become.
+_REGION_SPLITTERS: list[re.Pattern] = [
+    # "change the X to Y" / "change her X to Y"
+    re.compile(
+        r"\bchange\s+((?:the|her|his|its|their)\s+[\w'\s]+?)\s+to\s+(.+?)$",
+        re.IGNORECASE,
+    ),
+    # "make the X Y" / "make her shirt blue" — Y is an adjective/short phrase
+    re.compile(
+        r"\bmake\s+((?:the|her|his|its|their)\s+[\w'\s]+?)\s+(.+?)$",
+        re.IGNORECASE,
+    ),
+    # "replace the X with Y"
+    re.compile(
+        r"\breplace\s+((?:the|her|his|its|their)\s+[\w'\s]+?)\s+with\s+(.+?)$",
+        re.IGNORECASE,
+    ),
+    # "remove the X" / "remove her X" — Y is implicit
+    re.compile(
+        r"\bremove\s+((?:the|her|his|its|their)\s+[\w'\s]+?)$",
+        re.IGNORECASE,
+    ),
+    # "only the X" / "just the X" — caller wants ONLY this region focused;
+    # we use it as both grounding and edit target (the prompt as-is is the
+    # change instruction)
+    re.compile(
+        r"\b(?:just|only)\s+((?:the|that)\s+\w+(?:\s+\w+)*?)\b",
+        re.IGNORECASE,
+    ),
+]
+
+
+def extract_region_edit_parts(prompt: str) -> tuple[str, str] | None:
+    """Split a REGION_EDIT prompt into ``(grounding_text, edit_prompt)``.
+
+    Returns ``None`` when no splitter matches — caller should fall back
+    to using the full prompt for both (works because SAM 3 is forgiving
+    and Qwen-Image-Edit has visual conditioning).
+
+    The grounding_text is what gets fed to SAM 3 for masking; the
+    edit_prompt is what Qwen sees for inpainting. Examples:
+
+    >>> extract_region_edit_parts("change the man's tie to red")
+    ("the man's tie", "a red tie")  # edit_prompt enriched
+
+    >>> extract_region_edit_parts("make her shirt blue")
+    ("her shirt", "a blue shirt")
+
+    >>> extract_region_edit_parts("remove the umbrella")
+    ("the umbrella", "the surrounding scene, no umbrella, seamless background")
+    """
+    if not prompt:
+        return None
+    for splitter in _REGION_SPLITTERS:
+        m = splitter.search(prompt)
+        if not m:
+            continue
+        groups = m.groups()
+        grounding = groups[0].strip()
+        if len(groups) >= 2 and groups[1]:
+            target = groups[1].strip().rstrip(".")
+            # Heuristic: if target is short (1-3 words) it's likely a
+            # color/adjective. Bake it into a richer edit prompt that
+            # references the original noun, so Qwen has more to work with
+            # than just "blue".
+            if len(target.split()) <= 3:
+                # "the man's tie" → pull "tie" as the head noun
+                head_noun = grounding.split()[-1].rstrip("'s")
+                edit_prompt = f"a {target} {head_noun}"
+            else:
+                edit_prompt = target
+        else:
+            # "remove the X" — synthesize an inpaint prompt that erases
+            # the object cleanly into surroundings
+            head_noun = grounding.split()[-1].rstrip("'s")
+            edit_prompt = (
+                f"the surrounding scene, no {head_noun}, seamless background"
+            )
+        return grounding, edit_prompt
+    return None
+
 
 # ---- Size inference (works for GEN; EDIT inherits from input image) -----
 
