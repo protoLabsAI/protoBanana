@@ -3,6 +3,60 @@
 All notable changes to protoBanana. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 SemVer.
 
+## [0.1.0a2] — 2026-05-03 — workflow validator + edit conditioning fix
+
+### Fixed
+
+- **Edit + multi-ref workflows ignored the input image.** Both
+  `edit_qwen_image_2511.json` and `multiref_qwen_image_2511.json` used
+  `CLIPTextEncode` (text-only conditioning) and routed the input only
+  through `VAEEncode → latent_image` for KSampler. With `denoise=1.0`
+  that latent gets fully overwritten with random noise, so the model
+  saw zero visual context. Switched both to `TextEncodeQwenImageEditPlus`
+  on positive AND negative — the image now flows into Qwen2.5-VL's
+  vision tower as proper conditioning. Verified end-to-end: red+circle
+  input + "change the white circle to a yellow star, keep the red
+  background" → red+star output (avg RGB 225,49,29).
+- **`bgremove_birefnet.json` used wrong `class_type`.** Was `RMBG` (which
+  only accepts `RMBG-2.0/INSPYRENET/BEN/BEN2`); BiRefNet needs the
+  separate `BiRefNetRMBG` node from ComfyUI-RMBG. Caught by the new
+  static validator on its first run.
+- **`ImageScaleToTotalPixels` now requires `resolution_steps`.** Patched
+  all 5 instances across `edit` + `multiref` workflows.
+
+### Added
+
+- `scripts/validate_workflows.py` — static validator hits ComfyUI's
+  `/object_info`, checks every workflow JSON: class_type exists,
+  required inputs present, COMBO values valid. Skips runtime-substituted
+  fields (`LoadImage.image`). Exit code = number of failed workflows.
+- `tests/test_workflows_static.py` — pytest gate over every workflow
+  JSON. Skipped when `COMFYUI_BASE_URL` unset / ComfyUI unreachable so
+  unit-test CI without a ComfyUI dep still runs clean.
+- `docs/validating-workflows.md` — when to run, what it catches, the
+  schema-vs-semantic gap with an e2e smoke pattern.
+
+### Changed
+
+- `protobanana.routes.edit.substitute()` /
+  `protobanana.routes.multiref.substitute()` now write the prompt to
+  `prompt` (Qwen edit encoder) or `text` (legacy CLIPTextEncode) based
+  on the node's `class_type`, via a `_set_prompt()` helper. This lets
+  `bgremove` / `gen` keep using `CLIPTextEncode` while edit-shaped
+  workflows use the Plus encoder.
+
+### Lesson
+
+Static schema validation can't catch "this workflow is the wrong shape
+for the model loaded at node 37." The conditioning bug **passed** the
+new validator (CLIPTextEncode is a real node, all required fields were
+set). Schema validation answers "will ComfyUI accept this graph"; an
+end-to-end smoke (real input → check output is related to input) is
+what answers "will the model actually do the work." Both are now
+documented as the standing pre-merge gate.
+
+---
+
 ## [0.1.0a1] — 2026-05-03 — Gradio test/eval UI + HF Space scaffold
 
 ### Added

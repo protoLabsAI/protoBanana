@@ -127,16 +127,45 @@ class ProtoBananaProvider(CustomLLM):
 
         async with self._client(api_base, client, timeout_s) as cy:
             async def _one() -> str:
-                img_bytes = await edit.run(
-                    cy,
-                    self._loader,
-                    prompt=prompt,
-                    init_image_bytes=init_bytes,
-                    negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
-                    seed=opts.get("seed"),
-                    workflow_stem=workflow_stem,
-                    timeout_s=timeout_s,
-                )
+                # Dispatch by stem prefix so /v1/images/edits with a
+                # bgremove model alias actually runs the bgremove route.
+                # Without this dispatch, bgremove requests would silently
+                # fall through to edit.run() — which works *by accident*
+                # for the current bgremove workflow (no nodes 6/7/3 to
+                # mis-substitute) but breaks the moment a bgremove
+                # workflow grows a text-encode or sampler node.
+                if workflow_stem.startswith("bgremove_"):
+                    img_bytes = await bgremove.run(
+                        cy,
+                        self._loader,
+                        init_image_bytes=init_bytes,
+                        workflow_stem=workflow_stem,
+                        timeout_s=timeout_s,
+                    )
+                elif workflow_stem.startswith("multiref_"):
+                    # /v1/images/edits is single-image by spec; treat as
+                    # 1-ref multiref.
+                    img_bytes = await multiref.run(
+                        cy,
+                        self._loader,
+                        prompt=prompt,
+                        init_image_bytes_list=[init_bytes],
+                        negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
+                        seed=opts.get("seed"),
+                        workflow_stem=workflow_stem,
+                        timeout_s=timeout_s,
+                    )
+                else:
+                    img_bytes = await edit.run(
+                        cy,
+                        self._loader,
+                        prompt=prompt,
+                        init_image_bytes=init_bytes,
+                        negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
+                        seed=opts.get("seed"),
+                        workflow_stem=workflow_stem,
+                        timeout_s=timeout_s,
+                    )
                 return base64.b64encode(img_bytes).decode("ascii")
 
             b64s = await asyncio.gather(*(_one() for _ in range(n)))

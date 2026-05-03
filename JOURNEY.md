@@ -348,3 +348,56 @@ to `pip install protobanana && set custom_handler: protobanana.handler`.
 - **Hallucinated error messages from a chat LLM look exactly like real
   errors.** Always check the upstream service's logs before chasing the
   client's error text.
+
+---
+
+## Day 4 — the conditioning bug
+
+After 0.1.0a1 shipped the Gradio app, the user opened the Edit tab,
+uploaded an image, sent a prompt — and got back an image with no
+relationship to the input. Multi-ref had the same problem.
+
+The workflows passed every test we had. The static validator (added the
+same day to gate exactly this kind of issue) said all 5 workflows were
+fine. ComfyUI accepted the submissions, returned `prompt_id`s, executed
+to completion, and emitted images. The 46 unit tests stayed green.
+
+The bug was structural, not syntactic. Both edit-class workflows wired
+the input image two ways:
+
+1. `LoadImage → ImageScale → VAEEncode → latent_image` for KSampler
+2. ...nothing else.
+
+`CLIPTextEncode` was wired into positive/negative — but `CLIPTextEncode`
+only sees text. With `denoise=1.0` (correct for instruction edit), the
+`latent_image` gets fully overwritten with random noise. So the model
+ran pure text-to-image with the input's spatial dimensions. Hence: a
+fresh, unrelated image.
+
+The right node is `TextEncodeQwenImageEditPlus` — it takes
+`prompt + clip + vae + image1/image2/image3` and pipes the image into
+Qwen2.5-VL's vision tower. Both positive and negative get the same
+image so the model has consistent visual context.
+
+Verification was straightforward once the fix was in place:
+
+- **Input:** red 768×768 + white circle
+- **Prompt:** "change the white circle to a yellow star, keep the red
+  background"
+- **Output:** red 768×768 + yellow star (avg RGB 225,49,29)
+
+The fix landed in `protoBanana#3` and `homelab-iac#55`. ADR 0011
+documents the encoder choice; ADR 0012 documents why we now treat
+"static validation passes" as necessary-but-not-sufficient and added
+an e2e smoke pattern.
+
+**The lesson that mattered most:** schema validation answers "will the
+runtime accept this graph"; only end-to-end answers "will the model do
+the work." We had been operating as if those were the same question.
+They are not. The validator we'd just built passed the broken workflow
+because the broken workflow was *structurally* valid — the bug was in
+what the workflow *meant* relative to the model loaded at node 37.
+
+That's also why the bug survived through PR review, validator runs,
+and 46 unit tests. The whole chain was checking spelling on a
+grammatically-valid sentence with the wrong meaning.

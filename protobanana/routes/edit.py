@@ -20,22 +20,32 @@ def substitute(
     image_filename: str,
 ) -> dict[str, Any]:
     """Convention for edit_qwen_image_2511:
-    node "4" LoadImage      = init image filename (server-side)
-    node "6" CLIPTextEncode = positive (the edit instruction)
-    node "7" CLIPTextEncode = negative
-    node "3" KSampler       = seed
+    node "4" LoadImage                  = init image filename (server-side)
+    node "6" TextEncodeQwenImageEditPlus = positive (instruction + image1 ref)
+    node "7" TextEncodeQwenImageEditPlus = negative (with same image1 ref)
+    node "3" KSampler                    = seed
     Width/height are NOT substituted; node "14" ImageScaleToTotalPixels
     rescales the input to ~1.05M px (model native).
     """
     if "4" in workflow and workflow["4"].get("class_type") == "LoadImage":
         workflow["4"]["inputs"]["image"] = image_filename
-    if "6" in workflow and workflow["6"].get("class_type") == "CLIPTextEncode":
-        workflow["6"]["inputs"]["text"] = prompt
-    if "7" in workflow and workflow["7"].get("class_type") == "CLIPTextEncode":
-        workflow["7"]["inputs"]["text"] = negative_prompt
+    _set_prompt(workflow, "6", prompt)
+    _set_prompt(workflow, "7", negative_prompt)
     if "3" in workflow and workflow["3"].get("class_type") == "KSampler":
         workflow["3"]["inputs"]["seed"] = seed
     return workflow
+
+
+def _set_prompt(workflow: dict[str, Any], node_id: str, text: str) -> None:
+    """Write to `prompt` for TextEncodeQwenImageEdit*; `text` for CLIPTextEncode."""
+    if node_id not in workflow:
+        return
+    node = workflow[node_id]
+    ct = node.get("class_type", "")
+    if ct.startswith("TextEncodeQwenImageEdit"):
+        node["inputs"]["prompt"] = text
+    elif ct == "CLIPTextEncode":
+        node["inputs"]["text"] = text
 
 
 async def run(

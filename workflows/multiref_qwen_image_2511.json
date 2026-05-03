@@ -1,17 +1,191 @@
 {
-  "3": {"inputs": {"seed": 0, "steps": 20, "cfg": 4.0, "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0, "model": ["37", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["115", 0]}, "class_type": "KSampler"},
-  "100": {"inputs": {"image": "ref1.png"}, "class_type": "LoadImage"},
-  "101": {"inputs": {"image": "ref2.png"}, "class_type": "LoadImage"},
-  "102": {"inputs": {"image": "ref3.png"}, "class_type": "LoadImage"},
-  "110": {"inputs": {"upscale_method": "lanczos", "megapixels": 1.05, "image": ["100", 0]}, "class_type": "ImageScaleToTotalPixels"},
-  "111": {"inputs": {"upscale_method": "lanczos", "megapixels": 1.05, "image": ["101", 0]}, "class_type": "ImageScaleToTotalPixels"},
-  "112": {"inputs": {"upscale_method": "lanczos", "megapixels": 1.05, "image": ["102", 0]}, "class_type": "ImageScaleToTotalPixels"},
-  "115": {"inputs": {"pixels": ["110", 0], "vae": ["39", 0]}, "class_type": "VAEEncode"},
-  "6": {"inputs": {"text": "blend the style of ref2 and the subject of ref1", "clip": ["38", 0]}, "class_type": "CLIPTextEncode"},
-  "7": {"inputs": {"text": "low quality, blurry", "clip": ["38", 0]}, "class_type": "CLIPTextEncode"},
-  "8": {"inputs": {"samples": ["3", 0], "vae": ["39", 0]}, "class_type": "VAEDecode"},
-  "9": {"inputs": {"filename_prefix": "protobanana-multiref", "images": ["8", 0]}, "class_type": "SaveImage"},
-  "37": {"inputs": {"unet_name": "qwen_image_edit_2511_fp8mixed.safetensors", "weight_dtype": "default"}, "class_type": "UNETLoader"},
-  "38": {"inputs": {"clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors", "type": "qwen_image"}, "class_type": "CLIPLoader"},
-  "39": {"inputs": {"vae_name": "qwen_image_vae.safetensors"}, "class_type": "VAELoader"}
+  "3": {
+    "inputs": {
+      "seed": 0,
+      "steps": 20,
+      "cfg": 4.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": [
+        "37",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "115",
+        0
+      ]
+    },
+    "class_type": "KSampler"
+  },
+  "100": {
+    "inputs": {
+      "image": "ref1.png"
+    },
+    "class_type": "LoadImage"
+  },
+  "101": {
+    "inputs": {
+      "image": "ref2.png"
+    },
+    "class_type": "LoadImage"
+  },
+  "102": {
+    "inputs": {
+      "image": "ref3.png"
+    },
+    "class_type": "LoadImage"
+  },
+  "110": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 1.05,
+      "image": [
+        "100",
+        0
+      ],
+      "resolution_steps": 1
+    },
+    "class_type": "ImageScaleToTotalPixels"
+  },
+  "111": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 1.05,
+      "image": [
+        "101",
+        0
+      ],
+      "resolution_steps": 1
+    },
+    "class_type": "ImageScaleToTotalPixels"
+  },
+  "112": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 1.05,
+      "image": [
+        "102",
+        0
+      ],
+      "resolution_steps": 1
+    },
+    "class_type": "ImageScaleToTotalPixels"
+  },
+  "115": {
+    "inputs": {
+      "pixels": [
+        "110",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
+    },
+    "class_type": "VAEEncode"
+  },
+  "6": {
+    "inputs": {
+      "prompt": "blend the style of ref2 and the subject of ref1",
+      "clip": [
+        "38",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "image1": [
+        "110",
+        0
+      ],
+      "image2": [
+        "111",
+        0
+      ],
+      "image3": [
+        "112",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus"
+  },
+  "7": {
+    "inputs": {
+      "prompt": "low quality, blurry",
+      "clip": [
+        "38",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "image1": [
+        "110",
+        0
+      ],
+      "image2": [
+        "111",
+        0
+      ],
+      "image3": [
+        "112",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus"
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "protobanana-multiref",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveImage"
+  },
+  "37": {
+    "inputs": {
+      "unet_name": "qwen_image_edit_2511_fp8mixed.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader"
+  },
+  "38": {
+    "inputs": {
+      "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "type": "qwen_image"
+    },
+    "class_type": "CLIPLoader"
+  },
+  "39": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader"
+  }
 }
