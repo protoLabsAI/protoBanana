@@ -35,6 +35,17 @@ DEFAULT_GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://localhost:4000/v1")
 DEFAULT_API_KEY = os.environ.get("GATEWAY_API_KEY") or os.environ.get(
     "LITELLM_API_KEY", ""
 )
+# Hosted deployments pin the gateway URL via env and don't want users to
+# see or edit it. Set PROTOBANANA_GATEWAY_URL_HIDDEN=1 to drop the field
+# from the Settings tab — DEFAULT_GATEWAY_URL still flows through to the
+# OpenAI client because the gr.Textbox stays in the dataflow, just with
+# visible=False.
+HIDE_GATEWAY_URL = os.environ.get("PROTOBANANA_GATEWAY_URL_HIDDEN", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+
 DEFAULT_MODEL_GEN = os.environ.get("PROTOBANANA_MODEL_GEN", "protolabs/qwen-image")
 DEFAULT_MODEL_EDIT = os.environ.get(
     "PROTOBANANA_MODEL_EDIT", "protolabs/qwen-image-edit"
@@ -537,11 +548,17 @@ def build_app() -> gr.Blocks:
             "plus a **Chat** tab that exercises the multi-turn auto-routing path."
         )
 
-        with gr.Accordion("⚙️ Settings (gateway URL + API key + model overrides)", open=False):
+        accordion_label = (
+            "⚙️ Settings (API key + model overrides)"
+            if HIDE_GATEWAY_URL
+            else "⚙️ Settings (gateway URL + API key + model overrides)"
+        )
+        with gr.Accordion(accordion_label, open=False):
             gateway_url = gr.Textbox(
                 label="Gateway URL",
                 value=DEFAULT_GATEWAY_URL,
                 info="Your LiteLLM gateway base URL, e.g. http://your-host:4000/v1",
+                visible=not HIDE_GATEWAY_URL,
             )
             api_key = gr.Textbox(
                 label="API key",
