@@ -233,12 +233,120 @@ def fn_chat_send(
     return history, "", None  # clear input box + image upload
 
 
+def _content_to_image_part(content: Any) -> dict[str, Any] | None:
+    """Try to extract an OpenAI image_url part from one chatbot content
+    item. Returns None if the content isn't an image.
+
+    Gradio's Chatbot(type="messages") accepts image content in several
+    shapes — and the shape we get *back* on the next turn isn't the same
+    as what we put in. Specifically: a `gr.Image` we appended on turn 1
+    comes back as a `FileDataDict` (a plain dict with `path`, `mime_type`)
+    after the JSON roundtrip through the frontend. Without handling
+    that, the assistant's prior image silently disappears from history,
+    the chat router classifies the next turn as GEN, and the user sees
+    "remove the hat" produce a fresh unrelated image instead of editing.
+
+    Shapes we handle (newest Gradio first, oldest last):
+
+    1. ``dict`` with ``path`` (and optionally ``mime_type``) — Gradio's
+       FileDataDict. This is what an inline gr.Image becomes after a
+       roundtrip. **Most important case.**
+    2. ``gr.Image`` instance with ``.value`` (a PIL image) — what we
+       appended pre-roundtrip on the same turn.
+    3. ``tuple[path, alt_text]`` — Gradio's older multimodal format,
+       still accepted by Chatbot.
+    4. ``FileData`` Pydantic model — programmatic construction; same
+       shape as the dict but typed.
+    5. ``FileMessage`` — wrapper with ``.file: FileData`` + alt text.
+    """
+    # 1. Gradio FileDataDict: {"path": ..., "mime_type": ..., "url": ...}
+    if isinstance(content, dict):
+        path = content.get("path") or content.get("url")
+        mime = content.get("mime_type") or "image/png"
+        if path and (mime.startswith("image/") or _looks_like_image_path(path)):
+            return _path_to_image_part(path, mime)
+        return None
+
+    # 2. gr.Image with PIL .value (only on the turn we set it)
+    if isinstance(content, gr.Image):
+        try:
+            pil = content.value
+            if pil is not None:
+                return {
+                    "type": "image_url",
+                    "image_url": {"url": _pil_to_data_url(pil)},
+                }
+        except Exception:
+            pass
+        return None
+
+    # 3. Tuple form: (path, alt_text) or (path,)
+    if isinstance(content, tuple) and len(content) >= 1:
+        path = content[0]
+        if isinstance(path, str):
+            return _path_to_image_part(path, _mime_from_path(path))
+        return None
+
+    # 4 + 5. FileData / FileMessage Pydantic models (lazy import — keeps
+    # this function importable in environments without gradio internals).
+    try:
+        from gradio.components.chatbot import FileMessage  # type: ignore[attr-defined]
+        from gradio.data_classes import FileData
+        if isinstance(content, FileMessage):
+            content = content.file
+        if isinstance(content, FileData):
+            path = content.path or getattr(content, "url", None)
+            mime = getattr(content, "mime_type", None) or "image/png"
+            if path:
+                return _path_to_image_part(path, mime)
+    except ImportError:
+        pass
+    return None
+
+
+def _looks_like_image_path(path: str) -> bool:
+    return bool(re.search(r"\.(png|jpe?g|webp|gif|bmp)$", path, re.IGNORECASE))
+
+
+def _mime_from_path(path: str) -> str:
+    m = re.search(r"\.(png|jpe?g|webp|gif|bmp)$", path, re.IGNORECASE)
+    if not m:
+        return "image/png"
+    ext = m.group(1).lower()
+    return {"jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(ext, f"image/{ext}")
+
+
+def _path_to_image_part(path: str, mime: str) -> dict[str, Any] | None:
+    """Read a local path or HTTP url + base64-encode → OpenAI image_url part."""
+    try:
+        if path.startswith(("http://", "https://", "data:")):
+            # Gradio sometimes serves files via /file= URLs; passing them
+            # through verbatim works for OpenAI clients that fetch URLs,
+            # but our gateway expects data: URLs (it walks message
+            # history client-side via _extract_chat_request which only
+            # decodes data: URLs). For HTTP, fetch + re-encode.
+            if path.startswith("data:"):
+                return {"type": "image_url", "image_url": {"url": path}}
+            import urllib.request
+            with urllib.request.urlopen(path, timeout=10) as r:
+                data = r.read()
+        else:
+            from pathlib import Path
+            data = Path(path).read_bytes()
+        b64 = base64.b64encode(data).decode("ascii")
+        return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
+    except Exception:
+        return None
+
+
 def _gradio_history_to_openai(history: list) -> list[dict[str, Any]]:
     """Map Gradio messages-format → OpenAI chat-completions format.
 
-    Drops UI helper rows (info `_wall:` strings, etc.). Converts gr.Image
-    components in content back into multimodal `image_url` parts using
-    data URLs.
+    Drops UI helper rows (info `_wall:` strings, etc.) and the assistant's
+    timing line. Converts gr.Image / FileDataDict / tuple / FileData
+    contents back into multimodal `image_url` parts via
+    ``_content_to_image_part`` — see that function's docstring for the
+    full list of shapes handled and why each one matters.
     """
     out: list[dict[str, Any]] = []
     pending_text_parts: list[str] = []
@@ -276,18 +384,11 @@ def _gradio_history_to_openai(history: list) -> list[dict[str, Any]]:
             if content.startswith("_wall:"):
                 continue
             pending_text_parts.append(content)
-        elif isinstance(content, gr.Image):
-            try:
-                pil = content.value
-                if pil is not None:
-                    pending_image_parts.append(
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": _pil_to_data_url(pil)},
-                        }
-                    )
-            except Exception:
-                pass
+            continue
+        # Try every image content shape; first hit wins
+        part = _content_to_image_part(content)
+        if part is not None:
+            pending_image_parts.append(part)
     _flush()
     return out
 
