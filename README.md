@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-Phase%201-orange.svg)](PHASES.md)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/) [![Docs](https://img.shields.io/badge/docs-vitepress-emerald.svg)](https://protolabsai.github.io/protoBanana/)
 
 ## What it is
 
@@ -89,7 +89,7 @@ curl -X POST http://your-gateway:4000/v1/chat/completions \
 Returns an assistant message with a markdown-embedded `data:image/png;base64,...`
 URL — Open WebUI displays inline like a regular image attachment.
 
-See [docs/INSTALLATION.md](docs/INSTALLATION.md) for the full setup
+See [docs/installation.md](docs/installation.md) for the full setup
 (ComfyUI install, model downloads + symlinks, GPU planning).
 
 ## Architecture
@@ -120,7 +120,7 @@ See [docs/INSTALLATION.md](docs/INSTALLATION.md) for the full setup
                  BiRefNet / RMBG-2.0 / [Phase 4-6: Florence-2, SAM 2.1, LanPaint])
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full breakdown.
+See [docs/architecture.md](docs/architecture.md) for the full breakdown.
 
 ## Documentation
 
@@ -130,13 +130,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full breakdown.
 | [PHASES.md](PHASES.md) | The 7-phase roadmap with status, models needed, acceptance criteria |
 | [JOURNEY.md](JOURNEY.md) | How we got here — the full backfill (research → broken integrations → pivot to gateway) |
 | [HOWTO.md](HOWTO.md) | User-facing guide: prompting recipes, multi-ref tricks, intent keywords |
-| [docs/INSTALLATION.md](docs/INSTALLATION.md) | Full setup from a clean machine |
-| [docs/OPERATING.md](docs/OPERATING.md) | Day-2 ops: GPU planning, model swaps, troubleshooting |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Component breakdown + extension points |
-| [docs/WORKFLOWS-COOKBOOK.md](docs/WORKFLOWS-COOKBOOK.md) | How to add a new ComfyUI workflow |
-| [docs/INTENT-ROUTER.md](docs/INTENT-ROUTER.md) | How requests route to operations |
-| [docs/API.md](docs/API.md) | Client-facing API reference |
-| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Quality + latency methodology |
+| [docs/installation.md](docs/installation.md) | Full setup from a clean machine |
+| [docs/operating.md](docs/operating.md) | Day-2 ops: GPU planning, model swaps, troubleshooting |
+| [docs/architecture.md](docs/architecture.md) | Component breakdown + extension points |
+| [docs/workflows-cookbook.md](docs/workflows-cookbook.md) | How to add a new ComfyUI workflow |
+| [docs/intent-router.md](docs/intent-router.md) | How requests route to operations |
+| [docs/api.md](docs/api.md) | Client-facing API reference |
+| [docs/benchmarks.md](docs/benchmarks.md) | Quality + latency methodology |
 | [DECISIONS.md](DECISIONS.md) | Architectural decision records |
 | [CHANGELOG.md](CHANGELOG.md) | Per-version log |
 

@@ -1,0 +1,16 @@
+{
+  "name": "protobanana-docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predocs:build": "node prebuild.mjs",
+    "predocs:dev": "node prebuild.mjs",
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.5.0"
+  }
+}
