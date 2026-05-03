@@ -35,12 +35,38 @@ def substitute(
     seed: int,
     image_filenames: list[str],
 ) -> dict[str, Any]:
-    """Substitute up to MAX_REFS LoadImage filenames + prompt + seed."""
+    """Populate LoadImage slots and prune unused ones.
+
+    The bundled workflow ships with 3 placeholder LoadImage nodes
+    (100/101/102), 3 ImageScale nodes (110/111/112), and image1/2/3
+    inputs on both encoders (6 + 7). When the caller supplies fewer
+    than MAX_REFS images we MUST prune the unused slots — otherwise
+    ComfyUI tries to load the placeholder filenames (`ref2.png`,
+    `ref3.png`) from its input dir and fails with `Invalid image
+    file`. TextEncodeQwenImageEditPlus's image2/image3 inputs are
+    optional, so dropping them from the encoder is safe.
+    """
     refs = image_filenames[:MAX_REFS]
+    n_refs = len(refs)
+
+    # Populate the slots we have.
     for slot, fname in enumerate(refs, start=1):
         node_id = str(100 + slot - 1)  # 100, 101, 102
         if node_id in workflow and workflow[node_id].get("class_type") == "LoadImage":
             workflow[node_id]["inputs"]["image"] = fname
+
+    # Prune the slots we don't (LoadImage + ImageScale pairs + the
+    # corresponding `image_N` input on each encoder).
+    for unused_slot in range(n_refs + 1, MAX_REFS + 1):
+        load_id = str(100 + unused_slot - 1)
+        scale_id = str(110 + unused_slot - 1)
+        workflow.pop(load_id, None)
+        workflow.pop(scale_id, None)
+        for enc_id in ("6", "7"):
+            enc = workflow.get(enc_id)
+            if enc and isinstance(enc.get("inputs"), dict):
+                enc["inputs"].pop(f"image{unused_slot}", None)
+
     _set_prompt(workflow, "6", prompt)
     _set_prompt(workflow, "7", negative_prompt)
     if "3" in workflow and workflow["3"].get("class_type") == "KSampler":
