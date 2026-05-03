@@ -35,6 +35,13 @@ gradio = [
     "openai>=2.0,<3",
     "pillow>=10.0",
 ]
+# Langfuse tracing of provider entry points + ComfyUI sub-spans.
+# When unset, _tracing.py uses a no-op span and the package works
+# normally. Enable in deployments where Langfuse is configured by
+# installing this extra and exporting LANGFUSE_PUBLIC_KEY etc.
+tracing = [
+    "langfuse>=3.0,<4",
+]
 
 [project.urls]
 Homepage = "https://github.com/protoLabsAI/protoBanana"

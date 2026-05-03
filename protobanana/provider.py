@@ -33,6 +33,7 @@ from litellm.types.utils import (
     Usage,
 )
 
+from protobanana._tracing import trace_span
 from protobanana.client import ComfyUIClient
 from protobanana.intents.keywords import (
     DEFAULT_SIZE,
@@ -42,6 +43,28 @@ from protobanana.intents.keywords import (
 )
 from protobanana.routes import bgremove, edit, gen, multiref
 from protobanana.workflows.loader import WorkflowLoader
+
+# Truncate prompts in trace inputs so a 10K-char prompt doesn't bloat
+# the Langfuse payload. The full prompt is reproducible from the
+# user's original request anyway.
+_PROMPT_TRACE_MAX = 500
+
+
+def _truncate(text: str, n: int = _PROMPT_TRACE_MAX) -> str:
+    if not text or len(text) <= n:
+        return text
+    return text[:n] + f"…[+{len(text) - n} chars]"
+
+
+def _output_summary(image_bytes: bytes) -> dict[str, Any]:
+    """What we capture in span.output for an image. Bytes are too big to
+    log in full; size + first 12 chars of sha256 is enough to correlate
+    with downstream logs / on-disk files / failure modes."""
+    import hashlib
+    return {
+        "size_bytes": len(image_bytes),
+        "sha256_12": hashlib.sha256(image_bytes).hexdigest()[:12],
+    }
 
 log = logging.getLogger("protobanana.provider")
 log.setLevel(logging.INFO)
@@ -86,23 +109,33 @@ class ProtoBananaProvider(CustomLLM):
         # hardcoded gen workflow, breaking all non-default aliases.
         workflow_stem = model.split("/", 1)[-1] or gen.DEFAULT_STEM
 
-        async with self._client(api_base, client, timeout_s) as cy:
-            async def _one() -> str:
-                img_bytes = await gen.run(
-                    cy,
-                    self._loader,
-                    prompt=prompt,
-                    negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
-                    seed=opts.get("seed"),
-                    width=width,
-                    height=height,
-                    workflow_stem=workflow_stem,
-                    timeout_s=timeout_s,
-                )
-                return base64.b64encode(img_bytes).decode("ascii")
+        with trace_span(
+            "protobanana.aimage_generation",
+            input={"prompt": _truncate(prompt), "n": n, "size": f"{width}x{height}"},
+            metadata={"model": model, "workflow_stem": workflow_stem},
+        ) as span:
+            async with self._client(api_base, client, timeout_s) as cy:
+                async def _one() -> str:
+                    img_bytes = await gen.run(
+                        cy,
+                        self._loader,
+                        prompt=prompt,
+                        negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
+                        seed=opts.get("seed"),
+                        width=width,
+                        height=height,
+                        workflow_stem=workflow_stem,
+                        timeout_s=timeout_s,
+                    )
+                    return base64.b64encode(img_bytes).decode("ascii")
 
-            b64s = await asyncio.gather(*(_one() for _ in range(n)))
+                b64s = await asyncio.gather(*(_one() for _ in range(n)))
 
+            # Capture summary of the FIRST image — when n>1, all images
+            # come from the same workflow with different seeds; first
+            # one is enough to confirm the request returned something.
+            if b64s:
+                span.update_output(_output_summary(base64.b64decode(b64s[0])))
         return self._image_response(model_response, b64s)
 
     # ---- LiteLLM entry: /v1/images/edits --------------------------------
@@ -134,51 +167,65 @@ class ProtoBananaProvider(CustomLLM):
         # up loading the wrong stem.
         workflow_stem = model.split("/", 1)[-1] or edit.DEFAULT_STEM
 
-        async with self._client(api_base, client, timeout_s) as cy:
-            async def _one() -> str:
-                # Dispatch by stem prefix so /v1/images/edits with a
-                # bgremove model alias actually runs the bgremove route.
-                # Without this dispatch, bgremove requests would silently
-                # fall through to edit.run() — which works *by accident*
-                # for the current bgremove workflow (no nodes 6/7/3 to
-                # mis-substitute) but breaks the moment a bgremove
-                # workflow grows a text-encode or sampler node.
-                if workflow_stem.startswith("bgremove_"):
-                    img_bytes = await bgremove.run(
-                        cy,
-                        self._loader,
-                        init_image_bytes=init_bytes,
-                        workflow_stem=workflow_stem,
-                        timeout_s=timeout_s,
-                    )
-                elif workflow_stem.startswith("multiref_"):
-                    # /v1/images/edits is single-image by spec; treat as
-                    # 1-ref multiref.
-                    img_bytes = await multiref.run(
-                        cy,
-                        self._loader,
-                        prompt=prompt,
-                        init_image_bytes_list=[init_bytes],
-                        negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
-                        seed=opts.get("seed"),
-                        workflow_stem=workflow_stem,
-                        timeout_s=timeout_s,
-                    )
-                else:
-                    img_bytes = await edit.run(
-                        cy,
-                        self._loader,
-                        prompt=prompt,
-                        init_image_bytes=init_bytes,
-                        negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
-                        seed=opts.get("seed"),
-                        workflow_stem=workflow_stem,
-                        timeout_s=timeout_s,
-                    )
-                return base64.b64encode(img_bytes).decode("ascii")
+        # Resolve the dispatched route name up front for the trace.
+        # Sticker showing up as "edit" was exactly the kind of mis-
+        # routing the new dispatch logic prevents — surface it.
+        if workflow_stem.startswith("bgremove_"):
+            route_name = "bgremove"
+        elif workflow_stem.startswith("multiref_"):
+            route_name = "multiref"
+        else:
+            route_name = "edit"
 
-            b64s = await asyncio.gather(*(_one() for _ in range(n)))
+        with trace_span(
+            "protobanana.aimage_edit",
+            input={"prompt": _truncate(prompt), "n": n, "init_size_bytes": len(init_bytes)},
+            metadata={
+                "model": model,
+                "workflow_stem": workflow_stem,
+                "route": route_name,
+            },
+        ) as span:
+            async with self._client(api_base, client, timeout_s) as cy:
+                async def _one() -> str:
+                    if route_name == "bgremove":
+                        img_bytes = await bgremove.run(
+                            cy,
+                            self._loader,
+                            init_image_bytes=init_bytes,
+                            workflow_stem=workflow_stem,
+                            timeout_s=timeout_s,
+                        )
+                    elif route_name == "multiref":
+                        # /v1/images/edits is single-image by spec; treat as
+                        # 1-ref multiref.
+                        img_bytes = await multiref.run(
+                            cy,
+                            self._loader,
+                            prompt=prompt,
+                            init_image_bytes_list=[init_bytes],
+                            negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
+                            seed=opts.get("seed"),
+                            workflow_stem=workflow_stem,
+                            timeout_s=timeout_s,
+                        )
+                    else:
+                        img_bytes = await edit.run(
+                            cy,
+                            self._loader,
+                            prompt=prompt,
+                            init_image_bytes=init_bytes,
+                            negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
+                            seed=opts.get("seed"),
+                            workflow_stem=workflow_stem,
+                            timeout_s=timeout_s,
+                        )
+                    return base64.b64encode(img_bytes).decode("ascii")
 
+                b64s = await asyncio.gather(*(_one() for _ in range(n)))
+
+            if b64s:
+                span.update_output(_output_summary(base64.b64decode(b64s[0])))
         return self._image_response(model_response, b64s)
 
     # ---- LiteLLM entry: /v1/chat/completions (the nano-banana UX) -------
@@ -202,64 +249,88 @@ class ProtoBananaProvider(CustomLLM):
         opts = optional_params or {}
         timeout_s = float(timeout or DEFAULT_TIMEOUT_S)
 
-        op = classify_operation(
-            prompt,
-            has_init_image=bool(init_images),
-            n_ref_images=len(init_images),
-            explicit_mask=False,  # phase 5 wires this
-        )
+        with trace_span(
+            "protobanana.acompletion",
+            input={
+                "prompt": _truncate(prompt),
+                "n_images_in_history": len(init_images),
+            },
+            metadata={"model": model, "n_messages": len(messages)},
+        ) as parent:
+            with trace_span(
+                "protobanana.classify_operation",
+                input={"prompt": _truncate(prompt, 200)},
+                metadata={
+                    "has_init_image": bool(init_images),
+                    "n_ref_images": len(init_images),
+                },
+            ) as classify_span:
+                op = classify_operation(
+                    prompt,
+                    has_init_image=bool(init_images),
+                    n_ref_images=len(init_images),
+                    explicit_mask=False,  # phase 5 wires this
+                )
+                classify_span.update_output({"operation": op.value})
 
-        async with self._client(api_base, client, timeout_s) as cy:
-            if op == Operation.BGREMOVE:
-                img_bytes = await bgremove.run(
-                    cy,
-                    self._loader,
-                    init_image_bytes=init_images[0],
-                    timeout_s=timeout_s,
-                )
-            elif op == Operation.MULTIREF:
-                img_bytes = await multiref.run(
-                    cy,
-                    self._loader,
-                    prompt=prompt,
-                    init_image_bytes_list=init_images,
-                    seed=opts.get("seed"),
-                    timeout_s=max(timeout_s, 240.0),
-                )
-            elif op == Operation.EDIT:
-                img_bytes = await edit.run(
-                    cy,
-                    self._loader,
-                    prompt=prompt,
-                    init_image_bytes=init_images[0],
-                    seed=opts.get("seed"),
-                    timeout_s=timeout_s,
-                )
-            elif op == Operation.GEN:
-                width, height = infer_size_from_prompt(prompt)
-                img_bytes = await gen.run(
-                    cy,
-                    self._loader,
-                    prompt=prompt,
-                    seed=opts.get("seed"),
-                    width=width,
-                    height=height,
-                    timeout_s=timeout_s,
-                )
-            else:
-                # Phase 4-6 ops fall back to edit until their workflows ship
-                log.warning(
-                    "[protobanana] op=%s not yet implemented; falling back to edit",
-                    op.value,
-                )
-                img_bytes = await edit.run(
-                    cy,
-                    self._loader,
-                    prompt=prompt,
-                    init_image_bytes=init_images[0] if init_images else b"",
-                    seed=opts.get("seed"),
-                    timeout_s=timeout_s,
-                )
+            # Surface the dispatched op on the parent so traces can be
+            # filtered by operation without drilling into the child.
+            parent.update(metadata={"operation": op.value})
+
+            async with self._client(api_base, client, timeout_s) as cy:
+                if op == Operation.BGREMOVE:
+                    img_bytes = await bgremove.run(
+                        cy,
+                        self._loader,
+                        init_image_bytes=init_images[0],
+                        timeout_s=timeout_s,
+                    )
+                elif op == Operation.MULTIREF:
+                    img_bytes = await multiref.run(
+                        cy,
+                        self._loader,
+                        prompt=prompt,
+                        init_image_bytes_list=init_images,
+                        seed=opts.get("seed"),
+                        timeout_s=max(timeout_s, 240.0),
+                    )
+                elif op == Operation.EDIT:
+                    img_bytes = await edit.run(
+                        cy,
+                        self._loader,
+                        prompt=prompt,
+                        init_image_bytes=init_images[0],
+                        seed=opts.get("seed"),
+                        timeout_s=timeout_s,
+                    )
+                elif op == Operation.GEN:
+                    width, height = infer_size_from_prompt(prompt)
+                    img_bytes = await gen.run(
+                        cy,
+                        self._loader,
+                        prompt=prompt,
+                        seed=opts.get("seed"),
+                        width=width,
+                        height=height,
+                        timeout_s=timeout_s,
+                    )
+                else:
+                    # Phase 4-6 ops fall back to edit until their workflows ship
+                    log.warning(
+                        "[protobanana] op=%s not yet implemented; falling back to edit",
+                        op.value,
+                    )
+                    parent.update(metadata={"phase4_6_fallback": True})
+                    img_bytes = await edit.run(
+                        cy,
+                        self._loader,
+                        prompt=prompt,
+                        init_image_bytes=init_images[0] if init_images else b"",
+                        seed=opts.get("seed"),
+                        timeout_s=timeout_s,
+                    )
+
+            parent.update_output(_output_summary(img_bytes))
 
         b64 = base64.b64encode(img_bytes).decode("ascii")
         data_url = f"data:image/png;base64,{b64}"
