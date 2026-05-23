@@ -16,6 +16,51 @@
 [![Status](https://img.shields.io/badge/status-Phase%207-blue.svg)](PHASES.md)
 [![Tests](https://img.shields.io/badge/tests-99%20passing-brightgreen.svg)](tests/) [![Docs](https://img.shields.io/badge/docs-vitepress-emerald.svg)](https://protolabsai.github.io/protoBanana/)
 
+## The capability — workflow JSON as OpenAI model name
+
+ComfyUI is the open-source standard for composable image pipelines. Every
+pipeline is a workflow JSON: a graph of nodes, weights, prompts, sampler
+settings, conditional branches. It's expressive — and it speaks **only its
+own `/prompt` REST API**. Nothing in the wider OpenAI client ecosystem
+knows what a ComfyUI workflow is.
+
+LiteLLM is the open-source standard for unifying LLM providers behind the
+OpenAI spec. Every OpenAI-compatible client — Open WebUI, the Anthropic /
+OpenAI SDKs, a curl one-liner, your CLI tool — already speaks it. **It
+has no native ComfyUI provider.**
+
+protoBanana is the bridge. The provider package registers a custom
+LiteLLM provider that does three things:
+
+1. Maps a model name (e.g. `comfyui-qwen-image/qwen_image_edit_2511`) to
+   a workflow JSON on disk.
+2. Translates between specs: takes an OpenAI request shape — `/v1/images/generations`,
+   `/v1/images/edits`, or `/v1/chat/completions` with image parts — and
+   patches the right slots of the workflow JSON (prompt, init image, mask,
+   seed, size, custom KSampler params, etc.).
+3. Submits to ComfyUI, polls `/history/<id>`, fetches `/view`, and
+   returns the OpenAI response shape (`ImageResponse(b64_json)` or a
+   chat completion with markdown-embedded images).
+
+The net effect:
+
+> **A ComfyUI workflow you authored in the web UI becomes a model name
+> any OpenAI client can call.**
+
+That's why the same gateway alias works from Open WebUI, the Gradio app
+in this repo, protoCLI, a Python SDK script, or a `curl /v1/images/generations`.
+You don't write a new client per consumer; you write a workflow once and
+it appears in every OpenAI-compatible surface you have.
+
+Authoring those workflows is out of scope here — that's ComfyUI's job.
+See [`protoLabsAI/comfy-workflows`](https://github.com/protoLabsAI/comfy-workflows)
+for the workflow library that gets bind-mounted into the gateway. The
+seven workflows shipped with this repo (`qwen_image_2512`,
+`qwen_image_edit_2511`, `multiref_*`, `inpaint_*`, `outpaint_*`,
+`region_edit_*`, `bgremove_*`) are reference implementations that prove
+the bridge works across every category — gen, edit, mask, multi-image,
+agent-routed chat — and back the model aliases below.
+
 ## What it is
 
 One gateway alias drives the full conversational image experience:
@@ -164,16 +209,31 @@ and [docs/agent.md](docs/agent.md) for the agent loop in detail.
 
 ## Test/eval UI
 
-A Gradio app lives at `app/` — five tabs covering Generate, Edit,
-Multi-ref, Sticker, and Chat (multi-turn auto-routing). Runs anywhere
-with Python 3.11+; intended for local debugging AND HuggingFace Space
-deployment. See [app/README.md](app/README.md) and
-[docs/gradio-app.md](docs/gradio-app.md).
+The Gradio app at `app/` is a **reference consumer + quick-test surface**,
+not the product. It exists for two specific reasons:
+
+1. **Dogfooding the bridge.** Every tab posts to the gateway exactly the
+   way any other OpenAI client would. If a workflow regresses or a
+   provider change breaks the request shape, Gradio surfaces it before
+   downstream consumers do.
+2. **Fast iteration on workflows.** Author a workflow in ComfyUI, drop
+   the JSON into the gateway's mount, add a model alias to LiteLLM,
+   hit the Gradio tab to validate end-to-end — usually 30 seconds.
+
+Five tabs covering Generate, Edit, Multi-ref, Sticker, and Chat (multi-turn
+auto-routing). Runs anywhere with Python 3.11+; intended for local
+debugging AND HuggingFace Space deployment. See [app/README.md](app/README.md)
+and [docs/gradio-app.md](docs/gradio-app.md).
 
 ```bash
 pip install -e ".[gradio]"
 GATEWAY_URL=http://your-gateway:4000/v1 GATEWAY_API_KEY=sk-... python -m app
 ```
+
+If you only want the bridge in your gateway — e.g. you'll consume it from
+Open WebUI, your own CLI, or a non-Python client — skip the `[gradio]`
+extra and the `app/` directory entirely. The provider package is
+self-contained.
 
 ## Documentation
 
