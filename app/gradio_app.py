@@ -47,9 +47,9 @@ HIDE_GATEWAY_URL = os.environ.get("PROTOBANANA_GATEWAY_URL_HIDDEN", "").lower() 
 )
 # Comma-separated tab IDs to replace with a "disabled" notice — e.g.
 # `PROTOBANANA_DISABLE_TABS=multiref,region_edit`. Recognized IDs:
-# `generate`, `ideogram`, `edit`, `multiref`, `bgremove`, `region_edit`,
-# `outpaint`, `inpaint`, `chat`. Useful when a workflow is known-broken on the
-# host's model variant or out of scope for the deployment.
+# `generate`, `ideogram`, `edit`, `identity_edit`, `multiref`, `bgremove`,
+# `region_edit`, `outpaint`, `inpaint`, `chat`. Useful when a workflow is
+# known-broken on the host's model variant or out of scope for the deployment.
 _disabled_tabs_raw = os.environ.get("PROTOBANANA_DISABLE_TABS", "")
 DISABLED_TABS: set[str] = {t.strip() for t in _disabled_tabs_raw.split(",") if t.strip()}
 # Optional human-readable note to show in place of disabled tabs. Falls
@@ -83,6 +83,9 @@ DEFAULT_MODEL_INPAINT = os.environ.get(
 )
 DEFAULT_MODEL_IDEOGRAM = os.environ.get(
     "PROTOBANANA_MODEL_IDEOGRAM", "protolabs/ideogram-4"
+)
+DEFAULT_MODEL_IDENTITY_EDIT = os.environ.get(
+    "PROTOBANANA_MODEL_IDENTITY_EDIT", "protolabs/krea2-identity-edit"
 )
 
 SIZES = ["1024x1024", "1216x832", "832x1216", "1456x624", "1088x1088", "1152x896"]
@@ -253,6 +256,50 @@ def fn_edit(
     )
     img = _bytes_to_pil(_b64_to_bytes(resp.data[0].b64_json))
     info = f"**model**: `{model}`  ·  **wall**: `{time.time() - t0:.1f}s`"
+    return img, info
+
+
+def fn_identity_edit(
+    prompt: str,
+    source_image,
+    person_image,
+    grounding_px: float,
+    seed: float,
+    gateway_url: str,
+    api_key: str,
+    model: str,
+):
+    if not prompt:
+        raise gr.Error("Enter an edit instruction.")
+    if source_image is None:
+        raise gr.Error("Upload a source/scene image.")
+    client = _client(gateway_url, api_key)
+    t0 = time.time()
+    extra: dict[str, Any] = {"grounding_px": int(grounding_px)}
+    if (s := _seed_int(seed)) is not None:
+        extra["seed"] = s
+    # /v1/images/edits carries one image; the optional person reference
+    # rides extra_body as a data URL (the gateway decodes it).
+    if person_image is not None:
+        extra["person_image"] = _pil_to_data_url(person_image)
+
+    buf = io.BytesIO()
+    source_image.save(buf, format="PNG")
+    buf.seek(0)
+
+    resp = client.images.edit(
+        model=model,
+        prompt=prompt,
+        image=buf,
+        response_format="b64_json",
+        extra_body=extra,
+    )
+    img = _bytes_to_pil(_b64_to_bytes(resp.data[0].b64_json))
+    info = (
+        f"**model**: `{model}`  ·  **grounding**: `{int(grounding_px)}px`  ·  "
+        f"**person ref**: `{'yes' if person_image is not None else 'no'}`  ·  "
+        f"**wall**: `{time.time() - t0:.1f}s`"
+    )
     return img, info
 
 
@@ -792,6 +839,9 @@ def build_app() -> gr.Blocks:
                 model_ideogram = gr.Textbox(
                     label="Ideogram model alias", value=DEFAULT_MODEL_IDEOGRAM
                 )
+                model_identity_edit = gr.Textbox(
+                    label="Identity edit model alias", value=DEFAULT_MODEL_IDENTITY_EDIT
+                )
 
         # ---- Tab: Generate ------------------------------------------
         with gr.Tab("🎨 Generate"):
@@ -877,6 +927,48 @@ def build_app() -> gr.Blocks:
                 inputs=[e_prompt, e_init, e_seed, e_negative, gateway_url, api_key, model_edit],
                 outputs=[e_out, e_info],
             )
+
+        # ---- Tab: Identity edit --------------------------------------
+        if "identity_edit" in DISABLED_TABS:
+            with gr.Tab("🪞 Identity edit (disabled)"):
+                gr.Markdown(
+                    f"### Identity edit is disabled on this deployment\n\n{DISABLED_TABS_NOTE}"
+                )
+        else:
+            with gr.Tab("🪞 Identity edit"):
+                gr.Markdown(
+                    "Krea 2 Identity Edit — instruction edits that preserve faces and "
+                    "unedited content. Optionally add a **person reference** to restage "
+                    "them into the source scene (scene = left image, person = right; "
+                    "order matters). Grounding: lower = stronger edit adherence, "
+                    "higher = stronger likeness. No negative prompt."
+                )
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        ie_init = gr.Image(label="Source / scene image", type="pil", height=320)
+                        ie_person = gr.Image(
+                            label="Person reference (optional)", type="pil", height=320
+                        )
+                        ie_prompt = gr.Textbox(
+                            label="Edit instruction",
+                            lines=2,
+                            placeholder="place the person at the cafe table, keep their face exactly",
+                        )
+                        ie_grounding = gr.Slider(
+                            512, 1536, value=768, step=64,
+                            label="Grounding resolution (px)",
+                        )
+                        with gr.Accordion("Advanced", open=False):
+                            ie_seed = gr.Number(value=-1, label="Seed (-1 = random)")
+                        ie_btn = gr.Button("Edit", variant="primary")
+                    with gr.Column(scale=1):
+                        ie_out = gr.Image(label="Result", height=512)
+                        ie_info = gr.Markdown(elem_classes=["protobanana-info"])
+                ie_btn.click(
+                    fn=fn_identity_edit,
+                    inputs=[ie_prompt, ie_init, ie_person, ie_grounding, ie_seed, gateway_url, api_key, model_identity_edit],
+                    outputs=[ie_out, ie_info],
+                )
 
         # ---- Tab: Multi-ref ------------------------------------------
         if "multiref" in DISABLED_TABS:

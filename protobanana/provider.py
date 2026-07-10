@@ -52,6 +52,7 @@ from protobanana.routes import (
     gen,
     ideogram,
     inpaint,
+    krea2_edit,
     multiref,
     outpaint,
     region_edit,
@@ -212,6 +213,18 @@ class ProtoBananaProvider(CustomLLM):
             except (TypeError, ValueError):
                 mask_bytes = None
 
+        # Krea2 identity edit optionally takes a second (person) ref.
+        # /v1/images/edits is single-image by spec, so callers pass it
+        # via extra_body["person_image"] as a data URL — same channel
+        # region_edit uses for its grounding text.
+        person_bytes: Optional[bytes] = None
+        raw_person = opts.get("person_image") or _kwargs.get("person_image")
+        if raw_person is not None:
+            try:
+                person_bytes = self._coerce_image_to_bytes(raw_person)
+            except (TypeError, ValueError):
+                person_bytes = None
+
         # Resolve the dispatched route name up front for the trace.
         # Sticker showing up as "edit" was exactly the kind of mis-
         # routing the new dispatch logic prevents — surface it.
@@ -222,6 +235,21 @@ class ProtoBananaProvider(CustomLLM):
             # workflow gets loaded regardless of which alias they hit.
             if not workflow_stem.startswith("inpaint_"):
                 workflow_stem = inpaint.DEFAULT_STEM
+        elif workflow_stem.startswith("krea2_"):
+            route_name = "krea2_edit"
+            # Single-ref and two-ref are separate workflow JSONs (an
+            # unconnected optional input can't be expressed in the API
+            # prompt format). The person ref's presence decides which
+            # one loads, regardless of which alias the caller hit.
+            if person_bytes is not None:
+                if workflow_stem != krea2_edit.TWO_REF_STEM:
+                    workflow_stem = krea2_edit.TWO_REF_STEM
+            elif workflow_stem == krea2_edit.TWO_REF_STEM:
+                log.warning(
+                    "[protobanana] two-ref krea2 stem requested without "
+                    "person_image; falling back to single-ref",
+                )
+                workflow_stem = krea2_edit.DEFAULT_STEM
         elif workflow_stem.startswith("bgremove_"):
             route_name = "bgremove"
         elif workflow_stem.startswith("multiref_"):
@@ -295,6 +323,24 @@ class ProtoBananaProvider(CustomLLM):
                             mask_bytes=mask_bytes,  # type: ignore[arg-type]
                             negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
                             seed=opts.get("seed"),
+                            workflow_stem=workflow_stem,
+                            timeout_s=max(timeout_s, 240.0),
+                        )
+                    elif route_name == "krea2_edit":
+                        def _grounding_px() -> Optional[int]:
+                            v = opts.get("grounding_px") or _kwargs.get("grounding_px")
+                            try:
+                                return int(v) if v is not None else None
+                            except (TypeError, ValueError):
+                                return None
+                        img_bytes = await krea2_edit.run(
+                            cy,
+                            self._loader,
+                            prompt=prompt,
+                            init_image_bytes=init_bytes,
+                            person_image_bytes=person_bytes,
+                            seed=opts.get("seed"),
+                            grounding_px=_grounding_px(),
                             workflow_stem=workflow_stem,
                             timeout_s=max(timeout_s, 240.0),
                         )
