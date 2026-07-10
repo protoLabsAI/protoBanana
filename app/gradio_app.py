@@ -89,9 +89,11 @@ SIZES = ["1024x1024", "1216x832", "832x1216", "1456x624", "1088x1088", "1152x896
 
 # Ideogram 4 expresses guidance via named sampler presets (no negative
 # prompt). `custom` falls back to the workflow's mu/std/guidance_scale.
+# Quality 48 is the default: at 20 steps the model's typography — the
+# reason it's on the roster — comes out garbled (verified live).
 IDEOGRAM_SAMPLER_PRESETS = [
-    "4.0 Default 20",
     "4.0 Quality 48",
+    "4.0 Default 20",
     "4.0 Turbo 12",
     "custom",
 ]
@@ -822,8 +824,12 @@ def build_app() -> gr.Blocks:
         else:
             with gr.Tab("🖋️ Ideogram"):
                 gr.Markdown(
-                    "Ideogram 4.0 text → image (open weights, FP8). Strong typography. "
-                    "No negative prompt — guidance is set via the sampler preset."
+                    "Ideogram 4.0 text → image (open weights, FP8). Strong typography: "
+                    'put words to render in "double quotes" and write a full descriptive '
+                    "sentence. Known model quirk (upstream issues #5/#14): it sometimes "
+                    "returns a gray 'blocked by safety filter' card on harmless prompts — "
+                    "seed-dependent, so re-roll the seed and add visual detail if you hit "
+                    "one. No negative prompt — guidance is set via the sampler preset."
                 )
                 with gr.Row():
                     with gr.Column(scale=1):
@@ -837,7 +843,7 @@ def build_app() -> gr.Blocks:
                             ig_n = gr.Slider(1, 4, value=1, step=1, label="N images")
                         ig_preset = gr.Dropdown(
                             IDEOGRAM_SAMPLER_PRESETS,
-                            value="4.0 Default 20",
+                            value="4.0 Quality 48",
                             label="Sampler preset",
                         )
                         with gr.Accordion("Advanced", open=False):
