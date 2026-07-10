@@ -30,7 +30,7 @@
   },
   "55": {
     "inputs": {
-      "unet_name": "krea2_raw_bf16.safetensors",
+      "unet_name": "krea2_raw_fp8_scaled.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader"
@@ -44,7 +44,7 @@
   },
   "57": {
     "inputs": {
-      "vae_name": "krea2RealVae_v10.safetensors"
+      "vae_name": "qwen_image_vae.safetensors"
     },
     "class_type": "VAELoader"
   },

@@ -36,8 +36,12 @@ edited workflow JSON (8 steps / CFG 1.0) under a different stem.
 
 Gateway/ComfyUI prerequisites (outside this repo):
   - ComfyUI with native Krea 2 support + the `comfyui-krea2edit` pack
-  - Krea 2 Raw weights, the Qwen3-VL 4B text encoder, the Krea 2 VAE,
-    and the `krea2_identity_edit_v1_1.safetensors` LoRA
+  - Krea 2 Raw weights (we ship `krea2_raw_fp8_scaled` — VRAM/disk fit
+    next to the host's vLLM engines; bf16 is a one-line swap), the
+    Qwen3-VL 4B text encoder, the qwen_image VAE (Krea 2's official
+    VAE per the Comfy-Org packaging — the upstream examples name a
+    community "RealVae" reupload we deliberately don't use), and the
+    `krea2_identity_edit_v1_1.safetensors` LoRA
   - A LiteLLM alias (e.g. `protolabs/krea2-identity-edit`) → this stem
 """
 
