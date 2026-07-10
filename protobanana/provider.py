@@ -328,7 +328,9 @@ class ProtoBananaProvider(CustomLLM):
                         )
                     elif route_name == "krea2_edit":
                         def _grounding_px() -> Optional[int]:
-                            v = opts.get("grounding_px") or _kwargs.get("grounding_px")
+                            v = opts.get("grounding_px")
+                            if v is None:
+                                v = _kwargs.get("grounding_px")
                             try:
                                 return int(v) if v is not None else None
                             except (TypeError, ValueError):
