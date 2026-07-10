@@ -70,6 +70,69 @@
                  └─────────────────────────────────────────────────┘
 ```
 
+The system diagram above shows the **image path** (a chat turn that runs one
+op and returns the picture). The chat surface, however, defaults to a tool-use
+**agent** whose control flow is not a straight line down the diagram — it loops
+*back through the gateway*. That loop is below.
+
+---
+
+## Agent feedback loop
+
+When `PROTOBANANA_AGENT_BASE` is set, `acompletion` doesn't call the keyword
+classifier — it hands the chat surface to an LLM agent (see
+[docs/agent.md](agent.md)). The non-obvious part: **the provider, running
+*inside* the LiteLLM gateway, calls back out to that same gateway** to reach
+the routing LLM. The gateway calls itself.
+
+```
+   ┌──────────────────────────── the gateway calls itself ───────────────────────────┐
+   │                                                                                  │
+   ▼                                                                                  │
+┌─────────────────────────────────────────────────┐                                  │
+│  LiteLLM gateway   (one process)                 │                                  │
+│                                                  │                                  │
+│   routes model=protolabs/qwen-image-chat         │                                  │
+│        │                                         │                                  │
+│        ▼                                         │                                  │
+│   ProtoBananaProvider.acompletion                │                                  │
+│        │  build SYSTEM + history (images elided) │                                  │
+│        ▼                                         │                                  │
+│   agent loop  (≤ PROTOBANANA_AGENT_MAX_ITERS):   │                                  │
+│        │                                         │                                  │
+│        │  LM.chat.completions.create(            │   PROTOBANANA_AGENT_BASE         │
+│        │      base=localhost:4000/v1,  ──────────┼──▶  = http://localhost:4000/v1 ──┘
+│        │      model=PROTOBANANA_AGENT_MODEL,         (this same gateway, re-entered;
+│        │      tools=IMAGE_TOOLS)                      routes to the configured LLM —
+│        │                                             vLLM/cloud/etc. — as a NEW request)
+│        ▼                                         │
+│   resp.tool_calls?                               │
+│     ├─ yes → execute tool (routes/<op>.py        │
+│     │         → ComfyUIClient → ComfyUI),        │
+│     │        append {role:"tool", …}, loop ◀─────┘
+│     └─ no  → return resp.content + image embed
+└─────────────────────────────────────────────────┘
+```
+
+**Why the loopback (instead of calling a model directly):** routing the agent's
+own LLM calls back through the gateway means they inherit everything the gateway
+already does — `model_name` routing, fallbacks, auth, cost-tracking, and
+Langfuse/Prometheus observability. The agent picks a *capability* alias
+(`PROTOBANANA_AGENT_MODEL`, e.g. `protolabs/fast`) and the gateway decides what
+actually serves it. Swapping the brain is a config change, not a code change.
+
+**Why it MUST be async:** the nested call re-enters the *same* process that is
+still holding the original request open. On a blocking/sync call this
+self-deadlocks under a single worker — the worker waits on a response only it
+can produce. The entire provider path is `async` (httpx + the async OpenAI
+client) specifically so the event loop can service the re-entrant request while
+the outer one is suspended. See [DECISIONS.md §0014](../DECISIONS.md#0014).
+
+> This same "provider calls back through the gateway" pattern is reusable. Any
+> CustomLLM that needs an LLM mid-request — an agent, a classifier, a
+> fan-out/judge ensemble — should loop back through `localhost:4000/v1` rather
+> than reaching for a model SDK directly, for exactly the reasons above.
+
 ---
 
 ## Module responsibilities

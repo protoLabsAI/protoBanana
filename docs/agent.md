@@ -31,6 +31,8 @@ loop (max 3 iterations by default):
     return resp.content  +  markdown embed of last image (if any tool ran)
 ```
 
+That `LM.chat.completions.create` call is a **loopback into the same LiteLLM gateway** (`PROTOBANANA_AGENT_BASE=http://localhost:4000/v1`): the provider runs *inside* the gateway and re-enters it to reach the routing LLM, so the agent's own calls inherit the gateway's routing, fallbacks, and observability. It must be async or it self-deadlocks under a single worker — see the [Agent feedback loop diagram](architecture.md#agent-feedback-loop) and [DECISIONS.md §0014](../DECISIONS.md#0014).
+
 The LLM sees text only — never image bytes. Server-side state tracks "the most recent image" (and a list of all in-conversation images for `multi_ref_compose`). Tool results returned to the LLM are tiny dicts (`{"success": true, "image_size_bytes": 487123}`) so the conversation history stays cheap.
 
 ## Tools
