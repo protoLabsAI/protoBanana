@@ -1,0 +1,115 @@
+{
+  "29": {
+    "inputs": {
+      "filename_prefix": "protobanana-krea2edit",
+      "images": ["54", 0]
+    },
+    "class_type": "SaveImage"
+  },
+  "53": {
+    "inputs": {
+      "seed": 0,
+      "steps": 20,
+      "cfg": 3.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": ["79", 0],
+      "positive": ["84", 0],
+      "negative": ["85", 0],
+      "latent_image": ["82", 0]
+    },
+    "class_type": "KSampler"
+  },
+  "54": {
+    "inputs": {
+      "samples": ["53", 0],
+      "vae": ["57", 0]
+    },
+    "class_type": "VAEDecode"
+  },
+  "55": {
+    "inputs": {
+      "unet_name": "krea2_raw_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader"
+  },
+  "56": {
+    "inputs": {
+      "clip_name": "qwen3vl_4b_fp8_scaled.safetensors",
+      "type": "krea2"
+    },
+    "class_type": "CLIPLoader"
+  },
+  "57": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader"
+  },
+  "71": {
+    "inputs": {
+      "lora_name": "krea2_identity_edit_v1_1.safetensors",
+      "strength_model": 1.0,
+      "model": ["55", 0]
+    },
+    "class_type": "LoraLoaderModelOnly"
+  },
+  "72": {
+    "inputs": {
+      "image": "init.png"
+    },
+    "class_type": "LoadImage"
+  },
+  "73": {
+    "inputs": {
+      "pixels": ["77", 0],
+      "vae": ["57", 0]
+    },
+    "class_type": "VAEEncode"
+  },
+  "77": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "width": 1024,
+      "height": 1024,
+      "crop": "center",
+      "image": ["72", 0]
+    },
+    "class_type": "ImageScale"
+  },
+  "79": {
+    "inputs": {
+      "model": ["71", 0],
+      "source_latent": ["73", 0]
+    },
+    "class_type": "Krea2EditModelPatch"
+  },
+  "82": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage"
+  },
+  "84": {
+    "inputs": {
+      "prompt": "recolor the car to matte black",
+      "grounding_px": 768,
+      "clip": ["56", 0],
+      "image": ["77", 0]
+    },
+    "class_type": "Krea2EditGroundedEncode"
+  },
+  "85": {
+    "inputs": {
+      "prompt": "",
+      "grounding_px": 768,
+      "clip": ["56", 0],
+      "image": ["77", 0]
+    },
+    "class_type": "Krea2EditGroundedEncode"
+  }
+}
