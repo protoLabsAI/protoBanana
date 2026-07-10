@@ -1,0 +1,5 @@
+{
+  "1": {"inputs": {"model_weights": "4.0 NF4"}, "class_type": "Ideogram4PipelineLoader"},
+  "2": {"inputs": {"pipeline": ["1", 0], "prompt": "a beautiful landscape", "width": 1024, "height": 1024, "sampler_preset": "4.0 Default 20", "num_steps": 20, "guidance_scale": 7.0, "mu": 0.0, "std": 1.75, "seed": 0}, "class_type": "Ideogram4Generate"},
+  "3": {"inputs": {"filename_prefix": "protobanana-ideogram", "images": ["2", 0]}, "class_type": "SaveImage"}
+}

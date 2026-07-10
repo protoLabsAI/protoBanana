@@ -50,6 +50,7 @@ from protobanana.routes import (
     bgremove,
     edit,
     gen,
+    ideogram,
     inpaint,
     multiref,
     outpaint,
@@ -129,17 +130,34 @@ class ProtoBananaProvider(CustomLLM):
         ) as span:
             async with self._client(api_base, client, timeout_s) as cy:
                 async def _one() -> str:
-                    img_bytes = await gen.run(
-                        cy,
-                        self._loader,
-                        prompt=prompt,
-                        negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
-                        seed=opts.get("seed"),
-                        width=width,
-                        height=height,
-                        workflow_stem=workflow_stem,
-                        timeout_s=timeout_s,
-                    )
+                    # Ideogram 4 is a separate flow-matching pipeline (no
+                    # negative prompt; guidance via sampler preset), so it
+                    # gets its own route — dispatch by stem prefix, same
+                    # contract as the edit-side routing.
+                    if workflow_stem.startswith("ideogram"):
+                        img_bytes = await ideogram.run(
+                            cy,
+                            self._loader,
+                            prompt=prompt,
+                            seed=opts.get("seed"),
+                            width=width,
+                            height=height,
+                            sampler_preset=opts.get("sampler_preset"),
+                            workflow_stem=workflow_stem,
+                            timeout_s=timeout_s,
+                        )
+                    else:
+                        img_bytes = await gen.run(
+                            cy,
+                            self._loader,
+                            prompt=prompt,
+                            negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
+                            seed=opts.get("seed"),
+                            width=width,
+                            height=height,
+                            workflow_stem=workflow_stem,
+                            timeout_s=timeout_s,
+                        )
                     return base64.b64encode(img_bytes).decode("ascii")
 
                 b64s = await asyncio.gather(*(_one() for _ in range(n)))

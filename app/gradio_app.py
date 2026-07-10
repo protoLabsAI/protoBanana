@@ -47,8 +47,8 @@ HIDE_GATEWAY_URL = os.environ.get("PROTOBANANA_GATEWAY_URL_HIDDEN", "").lower() 
 )
 # Comma-separated tab IDs to replace with a "disabled" notice — e.g.
 # `PROTOBANANA_DISABLE_TABS=multiref,region_edit`. Recognized IDs:
-# `generate`, `edit`, `multiref`, `bgremove`, `region_edit`, `outpaint`,
-# `inpaint`, `chat`. Useful when a workflow is known-broken on the
+# `generate`, `ideogram`, `edit`, `multiref`, `bgremove`, `region_edit`,
+# `outpaint`, `inpaint`, `chat`. Useful when a workflow is known-broken on the
 # host's model variant or out of scope for the deployment.
 _disabled_tabs_raw = os.environ.get("PROTOBANANA_DISABLE_TABS", "")
 DISABLED_TABS: set[str] = {t.strip() for t in _disabled_tabs_raw.split(",") if t.strip()}
@@ -81,8 +81,22 @@ DEFAULT_MODEL_OUTPAINT = os.environ.get(
 DEFAULT_MODEL_INPAINT = os.environ.get(
     "PROTOBANANA_MODEL_INPAINT", "protolabs/qwen-image-inpaint"
 )
+DEFAULT_MODEL_IDEOGRAM = os.environ.get(
+    "PROTOBANANA_MODEL_IDEOGRAM", "protolabs/ideogram-4"
+)
 
 SIZES = ["1024x1024", "1216x832", "832x1216", "1456x624", "1088x1088", "1152x896"]
+
+# Ideogram 4 expresses guidance via named sampler presets (no negative
+# prompt). `custom` falls back to the workflow's mu/std/guidance_scale.
+# Quality 48 is the default: at 20 steps the model's typography — the
+# reason it's on the roster — comes out garbled (verified live).
+IDEOGRAM_SAMPLER_PRESETS = [
+    "4.0 Quality 48",
+    "4.0 Default 20",
+    "4.0 Turbo 12",
+    "custom",
+]
 
 NEGATIVE_DEFAULT = "low quality, blurry"
 
@@ -165,6 +179,42 @@ def fn_generate(
     info = (
         f"**model**: `{model}`  ·  **size**: `{size}`  ·  "
         f"**n**: `{int(n)}`  ·  **wall**: `{time.time() - t0:.1f}s`"
+    )
+    return images, info
+
+
+def fn_ideogram(
+    prompt: str,
+    size: str,
+    seed: float,
+    sampler_preset: str,
+    n: int,
+    gateway_url: str,
+    api_key: str,
+    model: str,
+):
+    if not prompt:
+        raise gr.Error("Enter a prompt.")
+    client = _client(gateway_url, api_key)
+    t0 = time.time()
+    extra: dict[str, Any] = {}
+    if (s := _seed_int(seed)) is not None:
+        extra["seed"] = s
+    if sampler_preset:
+        extra["sampler_preset"] = sampler_preset
+    resp = client.images.generate(
+        model=model,
+        prompt=prompt,
+        size=size,
+        n=int(n),
+        response_format="b64_json",
+        extra_body=extra or None,
+    )
+    images = [_bytes_to_pil(_b64_to_bytes(d.b64_json)) for d in resp.data]
+    info = (
+        f"**model**: `{model}`  ·  **size**: `{size}`  ·  "
+        f"**preset**: `{sampler_preset}`  ·  **n**: `{int(n)}`  ·  "
+        f"**wall**: `{time.time() - t0:.1f}s`"
     )
     return images, info
 
@@ -738,6 +788,10 @@ def build_app() -> gr.Blocks:
                 model_inpaint = gr.Textbox(
                     label="Inpaint model alias", value=DEFAULT_MODEL_INPAINT
                 )
+            with gr.Row():
+                model_ideogram = gr.Textbox(
+                    label="Ideogram model alias", value=DEFAULT_MODEL_IDEOGRAM
+                )
 
         # ---- Tab: Generate ------------------------------------------
         with gr.Tab("🎨 Generate"):
@@ -760,6 +814,49 @@ def build_app() -> gr.Blocks:
                 inputs=[g_prompt, g_size, g_seed, g_negative, g_n, gateway_url, api_key, model_gen],
                 outputs=[g_out, g_info],
             )
+
+        # ---- Tab: Ideogram -------------------------------------------
+        if "ideogram" in DISABLED_TABS:
+            with gr.Tab("🖋️ Ideogram (disabled)"):
+                gr.Markdown(
+                    f"### Ideogram is disabled on this deployment\n\n{DISABLED_TABS_NOTE}"
+                )
+        else:
+            with gr.Tab("🖋️ Ideogram"):
+                gr.Markdown(
+                    "Ideogram 4.0 text → image (open weights, FP8). Strong typography: "
+                    'put words to render in "double quotes" and write a full descriptive '
+                    "sentence. Known model quirk (upstream issues #5/#14): it sometimes "
+                    "returns a gray 'blocked by safety filter' card on harmless prompts — "
+                    "seed-dependent, so re-roll the seed and add visual detail if you hit "
+                    "one. No negative prompt — guidance is set via the sampler preset."
+                )
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        ig_prompt = gr.Textbox(
+                            label="Prompt",
+                            lines=3,
+                            placeholder='a vintage poster that says "GRAND OPENING" in bold serif',
+                        )
+                        with gr.Row():
+                            ig_size = gr.Dropdown(SIZES, value="1024x1024", label="Size")
+                            ig_n = gr.Slider(1, 4, value=1, step=1, label="N images")
+                        ig_preset = gr.Dropdown(
+                            IDEOGRAM_SAMPLER_PRESETS,
+                            value="4.0 Quality 48",
+                            label="Sampler preset",
+                        )
+                        with gr.Accordion("Advanced", open=False):
+                            ig_seed = gr.Number(value=-1, label="Seed (-1 = random)")
+                        ig_btn = gr.Button("Generate", variant="primary")
+                    with gr.Column(scale=1):
+                        ig_out = gr.Gallery(label="Result", columns=2, height=512)
+                        ig_info = gr.Markdown(elem_classes=["protobanana-info"])
+                ig_btn.click(
+                    fn=fn_ideogram,
+                    inputs=[ig_prompt, ig_size, ig_seed, ig_preset, ig_n, gateway_url, api_key, model_ideogram],
+                    outputs=[ig_out, ig_info],
+                )
 
         # ---- Tab: Edit -----------------------------------------------
         with gr.Tab("✏️ Edit"):

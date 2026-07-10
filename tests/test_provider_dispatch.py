@@ -165,3 +165,30 @@ def test_aimage_generation_bare_stem_no_slash_uses_passed_stem(provider, monkeyp
     ))
     assert gen_run.await_count == 1
     assert gen_run.await_args.kwargs["workflow_stem"] == "qwen_image_2512"
+
+
+def test_aimage_generation_ideogram_stem_calls_ideogram_route(provider, monkeypatch):
+    """An ideogram_* stem must dispatch to ideogram.run (its own flow-matching
+    pipeline), NOT the qwen gen.run route."""
+    fake_bytes = b"\x89PNG\r\nfake"
+    gen_run = AsyncMock(return_value=fake_bytes)
+    ideogram_run = AsyncMock(return_value=fake_bytes)
+    monkeypatch.setattr("protobanana.provider.gen.run", gen_run)
+    monkeypatch.setattr("protobanana.provider.ideogram.run", ideogram_run)
+    fake_cy = MagicMock()
+    fake_cy.__aenter__ = AsyncMock(return_value=fake_cy)
+    fake_cy.__aexit__ = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "protobanana.provider.ProtoBananaProvider._client",
+        lambda *_a, **_k: fake_cy,
+    )
+    _run(provider.aimage_generation(
+        model="ideogram_4_fp8",
+        prompt="a neon sign that says OPEN",
+        optional_params={"sampler_preset": "4.0 Turbo 12"},
+    ))
+    assert ideogram_run.await_count == 1, "ideogram_* must dispatch to ideogram.run"
+    assert gen_run.await_count == 0, "must NOT fall through to gen.run"
+    kwargs = ideogram_run.await_args.kwargs
+    assert kwargs["workflow_stem"] == "ideogram_4_fp8"
+    assert kwargs["sampler_preset"] == "4.0 Turbo 12"
