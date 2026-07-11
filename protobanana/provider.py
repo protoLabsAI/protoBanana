@@ -241,15 +241,18 @@ class ProtoBananaProvider(CustomLLM):
             # unconnected optional input can't be expressed in the API
             # prompt format). The person ref's presence decides which
             # one loads, regardless of which alias the caller hit.
+            # Suffix-based so stem VARIANTS (e.g. the realism-LoRA
+            # stems) keep their identity instead of being clobbered to
+            # the plain two-ref workflow.
             if person_bytes is not None:
-                if workflow_stem != krea2_edit.TWO_REF_STEM:
-                    workflow_stem = krea2_edit.TWO_REF_STEM
-            elif workflow_stem == krea2_edit.TWO_REF_STEM:
+                if not workflow_stem.endswith(krea2_edit.TWO_REF_SUFFIX):
+                    workflow_stem += krea2_edit.TWO_REF_SUFFIX
+            elif workflow_stem.endswith(krea2_edit.TWO_REF_SUFFIX):
                 log.warning(
                     "[protobanana] two-ref krea2 stem requested without "
                     "person_image; falling back to single-ref",
                 )
-                workflow_stem = krea2_edit.DEFAULT_STEM
+                workflow_stem = workflow_stem[: -len(krea2_edit.TWO_REF_SUFFIX)]
         elif workflow_stem.startswith("bgremove_"):
             route_name = "bgremove"
         elif workflow_stem.startswith("multiref_"):

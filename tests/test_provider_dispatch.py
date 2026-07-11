@@ -262,3 +262,33 @@ def test_aimage_edit_krea2_two_ref_stem_without_person_falls_back(provider, monk
     kwargs = krea2_run.await_args.kwargs
     assert kwargs["workflow_stem"] == "krea2_identity_edit"
     assert kwargs["person_image_bytes"] is None
+
+
+def test_aimage_edit_krea2_variant_stem_keeps_identity_with_person(provider, monkeypatch):
+    """A krea2 stem VARIANT (realism LoRA) + person_image gets the variant's
+    own two-ref sibling — not clobbered to the plain two-ref workflow."""
+    import base64
+
+    edit_run, krea2_run = _patch_krea2(monkeypatch)
+    data_url = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\nperson").decode()
+    _run(provider.aimage_edit(
+        model="protolabs/krea2_identity_edit_realism",
+        prompt="place the person at the market",
+        image=b"fake-scene",
+        optional_params={"person_image": data_url},
+    ))
+    assert krea2_run.await_count == 1
+    assert krea2_run.await_args.kwargs["workflow_stem"] == "krea2_identity_edit_realism_two_ref"
+
+
+def test_aimage_edit_krea2_variant_two_ref_without_person_strips_suffix(provider, monkeypatch):
+    """Variant two-ref stem with no person_image falls back to the variant's
+    single-ref sibling, preserving the variant."""
+    edit_run, krea2_run = _patch_krea2(monkeypatch)
+    _run(provider.aimage_edit(
+        model="protolabs/krea2_identity_edit_realism_two_ref",
+        prompt="recolor the car",
+        image=b"fake-input",
+    ))
+    assert krea2_run.await_count == 1
+    assert krea2_run.await_args.kwargs["workflow_stem"] == "krea2_identity_edit_realism"
