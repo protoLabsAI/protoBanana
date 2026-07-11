@@ -87,13 +87,30 @@ class ComfyUIClient:
             entry = data.get(prompt_id)
             if entry:
                 status = entry.get("status", {})
+                # An execution error leaves completed == False forever
+                # (status_str flips to "error" instead) — treat it as
+                # terminal or a dead job polls until the timeout.
+                if status.get("status_str") == "error":
+                    raise RuntimeError(
+                        f"ComfyUI workflow {prompt_id} failed: "
+                        f"{self._error_detail(status)}"
+                    )
                 if status.get("completed") is True:
-                    if status.get("status_str") == "error":
-                        raise RuntimeError(
-                            f"ComfyUI workflow {prompt_id} failed: {status.get('messages')}"
-                        )
                     return entry
             await asyncio.sleep(self._poll_interval_s)
+
+    @staticmethod
+    def _error_detail(status: dict[str, Any]) -> str:
+        """The node + exception from an execution_error message, else the
+        raw messages list — either way capped so it stays log-friendly."""
+        for msg in status.get("messages") or []:
+            if msg and msg[0] == "execution_error" and len(msg) > 1:
+                d = msg[1] or {}
+                return (
+                    f"{d.get('node_type')}: {d.get('exception_type')}: "
+                    f"{str(d.get('exception_message', '')).strip()[:300]}"
+                )
+        return str(status.get("messages"))[:300]
 
     async def fetch_image_bytes(
         self, history_entry: dict[str, Any]
