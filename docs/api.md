@@ -182,16 +182,21 @@ how you configured `model_list`):
 
 | Alias | Backed by | Operation | Use case |
 |---|---|---|---|
-| `protolabs/qwen-image` | `qwen_image_2512` | gen | Direct text-to-image |
+| `protolabs/qwen-image` | `qwen_image_2512` | gen | Direct text-to-image (quality tier, 20 steps) |
+| `protolabs/qwen-image-turbo` | `qwen_image_2512_turbo` | gen | **Draft tier** — Lightning 4-step fused checkpoint, ~10s warm at 1024² vs ~32s. For prototyping/iteration |
 | `protolabs/qwen-image-edit` | `qwen_image_edit_2511` | edit | Direct edit |
 | `protolabs/qwen-image-chat` | (auto-routes per turn) | gen/edit/multiref/bgremove | **Default for chat clients** |
+| `protolabs/qwen-image-multiref` | `multiref_qwen_image_2511` | multiref | 2–3 ref compose (chat channel) |
 | `protolabs/qwen-image-bgremove` | `bgremove_birefnet` | bgremove | Direct sticker (commercial license) |
 | `protolabs/qwen-image-bgremove-rmbg` | `bgremove_rmbg2` | bgremove | Direct sticker (RMBG-2.0, NC) |
+| `protolabs/qwen-image-region-edit` | `region_edit_sam3_qwen_image_2511` | region_edit | SAM-grounded single-object edit |
+| `protolabs/qwen-image-inpaint` | `inpaint_qwen_image_2511` | inpaint | Masked edit (`mask` in the edits request) |
+| `protolabs/qwen-image-outpaint` | `outpaint_qwen_image_2511` | outpaint | Canvas extension (`left/top/right/bottom` extras) |
+| `protolabs/krea2-identity-edit` | `krea2_identity_edit[_two_ref]` | krea2_edit | Identity-preserving edit; two-ref auto-selected when `person_image` is passed |
 
-Phase 4-7 will add:
-- `protolabs/qwen-image-region-edit` (Phase 4)
-- `protolabs/qwen-image-inpaint` (Phase 5)
-- `protolabs/qwen-image-outpaint` (Phase 6)
+Not yet in the protoLabs `model_list`: an Ideogram 4 alias (the
+`ideogram_4_fp8` workflow ships in this repo but the deploy hasn't
+exposed it yet).
 
 But end users should mostly just use `protolabs/qwen-image-chat` — the
 chat alias auto-routes.
