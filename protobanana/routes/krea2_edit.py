@@ -58,7 +58,11 @@ from protobanana.client import ComfyUIClient
 from protobanana.workflows.loader import WorkflowLoader
 
 DEFAULT_STEM = "krea2_identity_edit"
-TWO_REF_STEM = "krea2_identity_edit_two_ref"
+# Every krea2 stem has a `<stem>_two_ref` sibling workflow; the provider
+# appends/strips this suffix based on person_image presence, so variant
+# stems (e.g. krea2_identity_edit_realism) get two-ref support for free.
+TWO_REF_SUFFIX = "_two_ref"
+TWO_REF_STEM = DEFAULT_STEM + TWO_REF_SUFFIX
 
 # ~1MP target, multiple-of-8 dims — mirrors the upstream workflows'
 # ResolutionSelector (1MP, multiple 8). Trained range tops out at 2MP;
