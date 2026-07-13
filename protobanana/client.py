@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from typing import Any, Optional
 
 import httpx
@@ -63,6 +64,7 @@ class ComfyUIClient:
 
     async def submit_prompt(self, workflow: dict[str, Any]) -> str:
         """POST workflow JSON to /prompt; returns prompt_id for polling."""
+        self._stamp_cache_nonce(workflow)
         r = await self.http.post(f"{self._base}/prompt", json={"prompt": workflow})
         r.raise_for_status()
         body = r.json()
@@ -70,6 +72,22 @@ class ComfyUIClient:
         if not prompt_id:
             raise RuntimeError(f"ComfyUI did not return prompt_id; body={body!r}")
         return prompt_id
+
+    @staticmethod
+    def _stamp_cache_nonce(workflow: dict[str, Any]) -> None:
+        """Suffix every SaveImage filename_prefix with a per-submission nonce.
+
+        A byte-identical resubmission (fixed seed, retry) hits ComfyUI's
+        node-output cache: the job completes "success" with empty outputs and
+        callers see a bogus "produced no image outputs" error. Varying the
+        SaveImage widget forces that node to re-execute and emit outputs while
+        the expensive upstream nodes still reuse the cache."""
+        nonce = uuid.uuid4().hex[:8]
+        for node in workflow.values():
+            if isinstance(node, dict) and node.get("class_type") == "SaveImage":
+                inputs = node.setdefault("inputs", {})
+                prefix = inputs.get("filename_prefix") or "protobanana"
+                inputs["filename_prefix"] = f"{prefix}-{nonce}"
 
     async def wait_for_completion(
         self, prompt_id: str, timeout_s: Optional[float] = None
