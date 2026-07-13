@@ -21,11 +21,15 @@ def substitute(
     width: int,
     height: int,
 ) -> dict[str, Any]:
-    """Convention for qwen_image_2512:
+    """Node-ID convention (qwen_image_2512 and compatible workflows):
     node "6" CLIPTextEncode = positive
     node "7" CLIPTextEncode = negative
-    node "5" EmptySD3LatentImage = canvas dims
-    node "3" KSampler         = seed
+    node "5" Empty*LatentImage = canvas dims
+    node "3" KSampler / RandomNoise = seed
+
+    Ideogram-4 uses a different sampler shape (SamplerCustomAdvanced + RandomNoise +
+    EmptyFlux2LatentImage + Ideogram4Scheduler), so size/seed are also applied
+    class_type-wise below so the same convention covers it.
     """
     if "6" in workflow and workflow["6"].get("class_type") == "CLIPTextEncode":
         workflow["6"]["inputs"]["text"] = prompt
@@ -34,11 +38,21 @@ def substitute(
     if "5" in workflow and workflow["5"].get("class_type") in (
         "EmptySD3LatentImage",
         "EmptyLatentImage",
+        "EmptyFlux2LatentImage",
     ):
         workflow["5"]["inputs"]["width"] = width
         workflow["5"]["inputs"]["height"] = height
     if "3" in workflow and workflow["3"].get("class_type") == "KSampler":
         workflow["3"]["inputs"]["seed"] = seed
+    # class_type-wise fallbacks for non-KSampler workflows (e.g. Ideogram-4):
+    # RandomNoise carries the seed, and Ideogram4Scheduler needs the canvas dims too.
+    for node in workflow.values():
+        ct = node.get("class_type")
+        if ct == "RandomNoise":
+            node["inputs"]["noise_seed"] = seed
+        elif ct == "Ideogram4Scheduler":
+            node["inputs"]["width"] = width
+            node["inputs"]["height"] = height
     return workflow
 
 
