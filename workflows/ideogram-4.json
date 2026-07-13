@@ -1,0 +1,149 @@
+{
+ "1": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "ideogram4_nvfp4_mixed.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "2": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "ideogram4_unconditional_nvfp4_mixed.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "4": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen3vl_8b_nvfp4.safetensors",
+   "type": "ideogram4",
+   "device": "default"
+  }
+ },
+ "6": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "clip": [
+    "4",
+    0
+   ],
+   "text": "placeholder prompt"
+  }
+ },
+ "8": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "6",
+    0
+   ]
+  }
+ },
+ "9": {
+  "class_type": "DualModelGuider",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "positive": [
+    "6",
+    0
+   ],
+   "cfg": 3.0,
+   "model_negative": [
+    "2",
+    0
+   ],
+   "negative": [
+    "8",
+    0
+   ]
+  }
+ },
+ "10": {
+  "class_type": "Ideogram4Scheduler",
+  "inputs": {
+   "steps": 30,
+   "width": 1024,
+   "height": 1024,
+   "mu": 0.5,
+   "std": 1.75
+  }
+ },
+ "11": {
+  "class_type": "KSamplerSelect",
+  "inputs": {
+   "sampler_name": "euler"
+  }
+ },
+ "3": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": 42
+  }
+ },
+ "5": {
+  "class_type": "EmptyFlux2LatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1024,
+   "batch_size": 1
+  }
+ },
+ "12": {
+  "class_type": "SamplerCustomAdvanced",
+  "inputs": {
+   "noise": [
+    "3",
+    0
+   ],
+   "guider": [
+    "9",
+    0
+   ],
+   "sampler": [
+    "11",
+    0
+   ],
+   "sigmas": [
+    "10",
+    0
+   ],
+   "latent_image": [
+    "5",
+    0
+   ]
+  }
+ },
+ "13": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "flux2-vae.safetensors"
+  }
+ },
+ "14": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "12",
+    0
+   ],
+   "vae": [
+    "13",
+    0
+   ]
+  }
+ },
+ "15": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "14",
+    0
+   ],
+   "filename_prefix": "ideogram-4"
+  }
+ }
+}
