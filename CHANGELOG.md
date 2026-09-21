@@ -3,6 +3,29 @@
 All notable changes to protoBanana. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 SemVer.
 
+## [Unreleased]
+
+### Changed — Qwen-Image-2.1 is the default gen + edit model
+
+- New workflows `qwen_image_2_1.json` (text-to-image) and
+  `qwen_image_edit_2_1.json` (single-image edit), both on the unified
+  Qwen-Image-2.1 DiT. `gen.DEFAULT_STEM` / `edit.DEFAULT_STEM` now point
+  at them. The 2512 / 2511 workflows still ship and still work — any
+  alias pinned to those stems is unaffected.
+- **Requires ComfyUI >= 0.37.0** (`TextEncodeQwenImage21`,
+  `QwenImage21Cache`) and the `Comfy-Org/Qwen-Image-2.1` weights: new
+  DiT, new Qwen3-VL-8B text encoder, new VAE. Nothing is shared with
+  the 2512/2511 stack.
+- 2.1 folds positive + negative into one encoder on node "6" (no node
+  "7"); `gen.substitute` / `edit.substitute` handle both shapes. The
+  workflows run the official cfg=1 path, so `negative_prompt` is inert.
+- Measured on RTX A6000 (Ampere), 40 steps euler/simple: bf16 DiT 29s
+  warm at 1024², 151s at 2048²; edit ~38s. The `int8_convrot` DiT is
+  ~2.3x SLOWER than bf16 on Ampere (68s / 290s) — workflows ship bf16.
+  2048² sits close to the 180s default `COMFYUI_TIMEOUT`.
+- `scripts/validate_workflows.py` understands `COMFY_AUTOGROW_V3`
+  inputs (dotted `images.image_N` slots, min=0).
+
 ## [0.1.0a4] — 2026-05-03 — chat agent (LLM as router + brain), region edit, outpaint
 
 ### Added — agent + the rest of the ChatGPT-image-2 op set
