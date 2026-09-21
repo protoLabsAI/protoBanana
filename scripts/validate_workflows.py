@@ -53,6 +53,9 @@ def fetch_object_info(base_url: str) -> dict[str, Any]:
     except urllib.error.URLError as e:
         print(f"[validator] FAILED to reach ComfyUI at {url}: {e}", file=sys.stderr)
         sys.exit(2)
+    except ValueError as e:  # non-JSON body, e.g. a proxy's HTML error page
+        print(f"[validator] ComfyUI at {url} returned a non-JSON body: {e}", file=sys.stderr)
+        sys.exit(2)
 
 
 def validate_workflow(
