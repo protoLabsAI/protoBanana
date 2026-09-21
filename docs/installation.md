@@ -90,6 +90,26 @@ protoBanana's Phase 1-3 default workflows reference these filenames in
 ComfyUI's standard model directories. Use **cache-only downloads** (no
 `--local-dir`) — see [DECISIONS.md §0004](../DECISIONS.md#0004) for why.
 
+### 3.0 Qwen-Image-2.1 (default generation + edit)
+
+One unified model backs both `qwen_image_2_1` (gen) and
+`qwen_image_edit_2_1` (edit). Requires **ComfyUI >= 0.37.0**. It shares
+nothing with the 2512/2511 stack — new DiT, text encoder, and VAE.
+
+```bash
+HF_HOME=/mnt/models/huggingface hf download Comfy-Org/Qwen-Image-2.1 \
+  diffusion_models/qwen_image_2.1_bf16.safetensors \
+  text_encoders/qwen3vl_8b_int8_convrot.safetensors \
+  vae/qwen_image_2.1_vae_bf16.safetensors
+```
+
+Symlink into `models/diffusion_models`, `models/text_encoders`, and
+`models/vae` as in 3.1. Use the **bf16** DiT on Ampere (A6000/3090):
+the `int8_convrot` DiT is ~2.3x slower there. ~22 GB VRAM peak at 1024².
+
+The sections below (2512 / 2511) are still needed for the turbo tier
+and the inpaint / outpaint / multiref / region-edit workflows.
+
 ### 3.1 Qwen-Image-2512 (generation, Phase 1)
 
 ```bash

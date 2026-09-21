@@ -90,6 +90,19 @@ def validate_workflow(
 
         for req_field, schema in required.items():
             if req_field not in inputs:
+                # Autogrow inputs (e.g. TextEncodeQwenImage21 `images`) are a
+                # slot group wired as dotted keys (`images.image_1`), never
+                # under the bare field name; min=0 means zero slots is valid.
+                if isinstance(schema, list) and schema[0] == "COMFY_AUTOGROW_V3":
+                    opts = schema[1] if len(schema) > 1 else {}
+                    wired = sum(1 for k in inputs if k.startswith(req_field + "."))
+                    need = int((opts.get("template") or {}).get("min", 0))
+                    if wired < need:
+                        errors.append(
+                            f"node {nid!r} ({ct}): autogrow input {req_field!r} "
+                            f"needs at least {need} slot(s), got {wired}"
+                        )
+                    continue
                 # Show what type was expected for clearer diagnostics
                 type_hint = schema[0] if isinstance(schema, list) else schema
                 if isinstance(type_hint, list):
