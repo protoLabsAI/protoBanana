@@ -55,8 +55,8 @@ it appears in every OpenAI-compatible surface you have.
 Authoring those workflows is out of scope here — that's ComfyUI's job.
 See [`protoLabsAI/comfy-workflows`](https://github.com/protoLabsAI/comfy-workflows)
 for the workflow library that gets bind-mounted into the gateway. The
-workflows shipped with this repo (`qwen_image_2_1`,
-`qwen_image_edit_2_1`, `qwen_image_2512*`, `qwen_image_edit_2511`,
+workflows shipped with this repo (`qwen_image_2_1*`,
+`qwen_image_edit_2_1*`, `qwen_image_2512*`, `qwen_image_edit_2511`,
 `multiref_*`, `inpaint_*`, `outpaint_*`, `region_edit_*`, `bgremove_*`,
 `krea2_*`, `ideogram_*`) are reference implementations that prove
 the bridge works across every category — gen, edit, mask, multi-image,
