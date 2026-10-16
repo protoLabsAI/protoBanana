@@ -5,6 +5,20 @@ SemVer.
 
 ## [Unreleased]
 
+### Added — Qwen-Image-2.1 Turbo workflows
+
+- `qwen_image_2_1_turbo.json` / `qwen_image_edit_2_1_turbo.json`: the
+  distilled `qwen_image_2.1_turbo_bf16` DiT (`Comfy-Org/Qwen-Image-2.1`),
+  8 steps, cfg 1, euler/simple. Same encoder/VAE as the base 2.1
+  workflows, so no new route code — select by stem.
+- Measured on RTX A6000, 1024², warm, same seeds: gen 9s vs 31-32s
+  (base), edit 10-12s vs 38s. Side-by-side on 6 gen prompts + 3 edits
+  (text rendering, portrait, scene, product, poster, hands): no clear
+  quality loss; edits matched base on text swap, identity-preserving
+  recolour, and keycap recolour.
+- Known: edit seed 424242 renders fried output on BOTH base and turbo
+  (0/18 random seeds reproduced it). Retry with another seed.
+
 ### Changed — Qwen-Image-2.1 is the default gen + edit model
 
 - New workflows `qwen_image_2_1.json` (text-to-image) and
