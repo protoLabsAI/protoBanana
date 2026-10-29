@@ -5,6 +5,17 @@ SemVer.
 
 ## [Unreleased]
 
+### Fixed — `/v1/images/generations` ignored the requested size
+
+- LiteLLM (1.83) strips the OpenAI-standard `size` before it calls a
+  CustomLLM, so `aimage_generation` never saw it and fell back to
+  `infer_size_from_prompt`: `size="1024x1024"` with "wide-eyed" in the
+  prompt rendered 1216x832. The provider now also reads `width` and
+  `height` (non-standard keys, which LiteLLM forwards), and still honours
+  `size` when it does arrive. Callers that want an exact canvas should
+  send `width`/`height` alongside `size` (the protobanana-plugin does from
+  0.4.0).
+
 ### Removed — Qwen-Image-2512, Qwen-Image-Edit-2511, RMBG-2.0 workflows
 
 - Deleted `qwen_image_2512`, `qwen_image_2512_turbo`, `qwen_image_edit_2511`,

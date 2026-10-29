@@ -111,10 +111,7 @@ class ProtoBananaProvider(CustomLLM):
         opts = optional_params or {}
         n = int(opts.get("n", 1))
         timeout_s = float(timeout or DEFAULT_TIMEOUT_S)
-        size = opts.get("size")
-        width, height = (
-            self._parse_size(size) if size else infer_size_from_prompt(prompt)
-        )
+        width, height = self._requested_size(opts, _kwargs) or infer_size_from_prompt(prompt)
         # LiteLLM may pass `model` either as `provider/stem` (chat
         # completions retain the prefix) or as just `stem` (CustomLLM
         # routing for images.* strips the prefix). Strip if present,
@@ -676,6 +673,36 @@ class ProtoBananaProvider(CustomLLM):
             http=passed_http,
             default_timeout_s=timeout_s,
         )
+
+    @classmethod
+    def _requested_size(cls, opts: dict, kwargs: dict) -> tuple[int, int] | None:
+        """The caller's explicit canvas size, or None to infer from the prompt.
+
+        LiteLLM (1.83) strips the OpenAI-standard ``size`` (with ``n`` and
+        ``quality``) before calling a CustomLLM: they are "OpenAI params" but a
+        custom provider has no config to map them, so they never reach
+        ``optional_params``. Without this, every ``size`` was silently replaced
+        by ``infer_size_from_prompt`` ("wide-eyed owl" → 1216x832). Non-standard
+        keys pass through untouched, so callers also send ``width`` and
+        ``height``; ``size`` is still honoured for direct (non-proxy) callers
+        and for any LiteLLM that starts forwarding it.
+        """
+        size = opts.get("size") or kwargs.get("size")
+        if size:
+            return cls._parse_size(size)
+        w = opts.get("width", kwargs.get("width"))
+        h = opts.get("height", kwargs.get("height"))
+        if w is None and h is None:
+            return None
+        try:
+            w, h = int(w), int(h)
+        except (TypeError, ValueError) as e:
+            raise ValueError(
+                f"invalid width/height {w!r}x{h!r}; expected two integers"
+            ) from e
+        if w <= 0 or h <= 0:
+            raise ValueError(f"invalid width/height {w}x{h}; must be positive")
+        return w, h
 
     @staticmethod
     def _parse_size(size: str) -> tuple[int, int]:

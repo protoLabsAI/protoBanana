@@ -251,3 +251,66 @@ def test_aimage_edit_krea2_variant_two_ref_without_person_strips_suffix(provider
     ))
     assert krea2_run.await_count == 1
     assert krea2_run.await_args.kwargs["workflow_stem"] == "krea2_identity_edit_realism"
+
+
+def _patch_gen(monkeypatch):
+    gen_run = AsyncMock(return_value=b"\x89PNG\r\nfake")
+    monkeypatch.setattr("protobanana.provider.gen.run", gen_run)
+    fake_cy = MagicMock()
+    fake_cy.__aenter__ = AsyncMock(return_value=fake_cy)
+    fake_cy.__aexit__ = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        "protobanana.provider.ProtoBananaProvider._client",
+        lambda *_a, **_k: fake_cy,
+    )
+    return gen_run
+
+
+def test_aimage_generation_width_height_beat_prompt_inference(provider, monkeypatch):
+    """LiteLLM drops `size` for CustomLLM providers, so explicit width/height
+    (which do pass through) must win over aspect words in the prompt."""
+    gen_run = _patch_gen(monkeypatch)
+    asyncio.run(provider.aimage_generation(
+        model="qwen_image_2_1",
+        prompt="a wide-eyed owl",  # "wide" alone would infer 1216x832
+        optional_params={"width": 1024, "height": 1024},
+    ))
+    kw = gen_run.await_args.kwargs
+    assert (kw["width"], kw["height"]) == (1024, 1024)
+
+
+def test_aimage_generation_width_height_accept_strings(provider, monkeypatch):
+    """Multipart/JSON proxies may hand the ints over as strings."""
+    gen_run = _patch_gen(monkeypatch)
+    asyncio.run(provider.aimage_generation(
+        model="qwen_image_2_1", prompt="an owl",
+        optional_params={"width": "768", "height": "1344"},
+    ))
+    kw = gen_run.await_args.kwargs
+    assert (kw["width"], kw["height"]) == (768, 1344)
+
+
+def test_aimage_generation_size_still_honoured(provider, monkeypatch):
+    gen_run = _patch_gen(monkeypatch)
+    asyncio.run(provider.aimage_generation(
+        model="qwen_image_2_1", prompt="a wide shot",
+        optional_params={"size": "832x1216"},
+    ))
+    kw = gen_run.await_args.kwargs
+    assert (kw["width"], kw["height"]) == (832, 1216)
+
+
+def test_aimage_generation_no_size_still_infers_from_prompt(provider, monkeypatch):
+    gen_run = _patch_gen(monkeypatch)
+    asyncio.run(provider.aimage_generation(model="qwen_image_2_1", prompt="a wide shot"))
+    kw = gen_run.await_args.kwargs
+    assert (kw["width"], kw["height"]) == (1216, 832)
+
+
+def test_aimage_generation_bad_width_height_is_a_clear_error(provider, monkeypatch):
+    _patch_gen(monkeypatch)
+    with pytest.raises(ValueError, match="width/height"):
+        asyncio.run(provider.aimage_generation(
+            model="qwen_image_2_1", prompt="x",
+            optional_params={"width": "big", "height": 10},
+        ))
