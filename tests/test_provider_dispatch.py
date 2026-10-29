@@ -24,7 +24,7 @@ def provider():
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def _patch_routes(monkeypatch):
@@ -314,3 +314,26 @@ def test_aimage_generation_bad_width_height_is_a_clear_error(provider, monkeypat
             model="qwen_image_2_1", prompt="x",
             optional_params={"width": "big", "height": 10},
         ))
+
+
+def test_acompletion_gen_honours_width_height(provider, monkeypatch):
+    """/v1/chat/completions GEN must honour explicit sizes like
+    /v1/images/generations does, not infer from "wide" in the prompt."""
+    gen_run = _patch_gen(monkeypatch)
+    asyncio.run(provider.acompletion(
+        model="qwen_image_2_1",  # alias-forced GEN, no agent/classifier
+        messages=[{"role": "user", "content": "a wide-eyed owl"}],
+        optional_params={"width": 1024, "height": 1024},
+    ))
+    kw = gen_run.await_args.kwargs
+    assert (kw["width"], kw["height"]) == (1024, 1024)
+
+
+def test_acompletion_gen_without_size_still_infers(provider, monkeypatch):
+    gen_run = _patch_gen(monkeypatch)
+    asyncio.run(provider.acompletion(
+        model="qwen_image_2_1",
+        messages=[{"role": "user", "content": "a wide shot of a valley"}],
+    ))
+    kw = gen_run.await_args.kwargs
+    assert (kw["width"], kw["height"]) == (1216, 832)

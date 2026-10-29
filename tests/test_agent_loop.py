@@ -24,7 +24,7 @@ from protobanana import agent as agent_mod
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 class _MockLMResponse:

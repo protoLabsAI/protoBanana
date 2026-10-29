@@ -615,7 +615,9 @@ class ProtoBananaProvider(CustomLLM):
                         timeout_s=timeout_s,
                     )
                 elif op == Operation.GEN:
-                    width, height = infer_size_from_prompt(prompt)
+                    width, height = self._requested_size(
+                        opts, _kwargs
+                    ) or infer_size_from_prompt(prompt)
                     img_bytes = await gen.run(
                         cy,
                         self._loader,
