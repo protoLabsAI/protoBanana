@@ -193,9 +193,9 @@ They're isolated, testable, swappable.
 
 | Route | Stem | Substitution | Returns |
 |---|---|---|---|
-| `gen` | `qwen_image_2512` | prompt, neg_prompt, seed, width, height (nodes 6/7/3/5) | bytes |
-| `edit` | `qwen_image_edit_2511` | prompt, neg_prompt, seed, image filename (nodes 6/7/3/4) | bytes |
-| `multiref` | `multiref_qwen_image_2511` | prompt, neg_prompt, seed, up to 3 image filenames (nodes 6/7/3/100/101/102) | bytes |
+| `gen` | `qwen_image_2_1` | prompt, neg_prompt, seed, width, height (nodes 6/3/5) | bytes |
+| `edit` | `qwen_image_edit_2_1` | prompt, neg_prompt, seed, image filename (nodes 6/3/4) | bytes |
+| `multiref` | `multiref_qwen_image_2_1` | prompt, neg_prompt, seed, up to 10 image filenames (nodes 6/3/100, 101, … → `images.image_1..N` on node 6) | bytes |
 | `bgremove` | `bgremove_birefnet` | image filename only (node 4) | bytes (PNG with alpha) |
 
 ### `protobanana.provider`
@@ -222,12 +222,16 @@ Static JSON workflows. One file per operation/model combination:
 
 ```
 workflows/
-├── qwen_image_2512.json          # Phase 1 — text-to-image
-├── qwen_image_edit_2511.json         # Phase 1 — single-image edit
-├── multiref_qwen_image_2511.json     # Phase 3 — 2-3 image compose
-├── bgremove_birefnet.json            # Phase 2 — bg removal (commercial)
-├── bgremove_rmbg2.json               # Phase 2 — bg removal (NC)
-└── (Phase 4-6 workflows TBD)
+├── qwen_image_2_1.json                    # text-to-image
+├── qwen_image_2_1_turbo.json              # text-to-image, 8-step draft tier
+├── qwen_image_edit_2_1.json               # single-image edit
+├── qwen_image_edit_2_1_turbo.json         # single-image edit, draft tier
+├── multiref_qwen_image_2_1.json           # native multi-ref compose (up to 10)
+├── inpaint_qwen_image_2_1.json            # masked edit
+├── outpaint_qwen_image_2_1.json           # canvas extension
+├── region_edit_sam3_qwen_image_2_1.json   # SAM 3 text→mask + masked edit
+├── bgremove_birefnet.json                 # bg removal (commercial)
+└── krea2_identity_edit*.json              # identity-preserving edit (4 variants)
 ```
 
 Each file is a valid ComfyUI workflow that runs standalone in the ComfyUI
@@ -314,11 +318,13 @@ per-route because:
 Trade: 4 modules of ~50 LOC each instead of 1 module of ~150 LOC.
 Acceptable.
 
-### 3-reference cap
+### Reference caps
 
-Hard-coded in `routes/multiref.py` (`MAX_REFS = 3`). Qwen-Image-Edit-2511's
-spec ceiling. Easy to bump if upstream changes; documented in
-[PHASES.md](../PHASES.md) as a known limitation vs nano-banana 2.
+The chat path collects at most 3 images (`_extract_chat_request`). The
+multiref route itself accepts up to 10 (`MAX_REFS = 10` in
+`routes/multiref.py`), each wired natively into node 6's
+`images.image_N` slots. Documented in [PHASES.md](../PHASES.md) as a
+known limitation vs nano-banana 2.
 
 ### Workflows as JSON files, not Python builders
 

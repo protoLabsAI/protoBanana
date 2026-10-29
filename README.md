@@ -32,7 +32,7 @@ has no native ComfyUI provider.**
 protoBanana is the bridge. The provider package registers a custom
 LiteLLM provider that does three things:
 
-1. Maps a model name (e.g. `comfyui-qwen-image/qwen_image_edit_2511`) to
+1. Maps a model name (e.g. `comfyui-qwen-image/qwen_image_edit_2_1`) to
    a workflow JSON on disk.
 2. Translates between specs: takes an OpenAI request shape — `/v1/images/generations`,
    `/v1/images/edits`, or `/v1/chat/completions` with image parts — and
@@ -56,8 +56,7 @@ Authoring those workflows is out of scope here — that's ComfyUI's job.
 See [`protoLabsAI/comfy-workflows`](https://github.com/protoLabsAI/comfy-workflows)
 for the workflow library that gets bind-mounted into the gateway. The
 workflows shipped with this repo (`qwen_image_2_1*`,
-`qwen_image_edit_2_1*`, `qwen_image_2512*`, `qwen_image_edit_2511`,
-`multiref_*`, `inpaint_*`, `outpaint_*`, `region_edit_*`, `bgremove_*`,
+`qwen_image_edit_2_1*`, `multiref_*`, `inpaint_*`, `outpaint_*`, `region_edit_*`, `bgremove_*`,
 `krea2_*`) are reference implementations that prove
 the bridge works across every category — gen, edit, mask, multi-image,
 agent-routed chat — and back the model aliases below.
@@ -80,7 +79,7 @@ work — see [docs/agent.md](docs/agent.md). Falls back to a deterministic
 keyword classifier when no LLM endpoint is configured.
 
 Backed by Qwen-Image-2.1 (gen, edit, native multi-ref, inpaint, outpaint,
-region edit) + BiRefNet/RMBG-2.0 (sticker) + SAM 3
+region edit) + BiRefNet (sticker) + SAM 3
 (text→mask grounding for region edit). All seven phases shipped.
 
 ## Why this exists
@@ -197,7 +196,7 @@ See [docs/installation.md](docs/installation.md) for the full setup
                           │
                           ▼
                        ComfyUI
-        (Qwen-Image-2.1 / BiRefNet / RMBG-2.0 / SAM 3)
+            (Qwen-Image-2.1 / BiRefNet / SAM 3)
 ```
 
 The chat agent is the default; the keyword classifier kicks in only when
@@ -264,11 +263,11 @@ protoBanana is a synthesis, not an invention. Credit:
 
 | Component | Source |
 |---|---|
-| Image gen + edit | [Qwen-Image-2.1](https://github.com/QwenLM/Qwen-Image-2.1) (Alibaba; Qwen Research License) — legacy 2512 / Edit-2511 workflows still ship |
-| Background removal | [BiRefNet](https://github.com/ZhengPeng7/BiRefNet), [RMBG-2.0](https://huggingface.co/briaai/RMBG-2.0) (BRIA) |
+| Image gen + edit | [Qwen-Image-2.1](https://github.com/QwenLM/Qwen-Image-2.1) (Alibaba; Qwen Research License, non-commercial) |
+| Background removal | [BiRefNet](https://github.com/ZhengPeng7/BiRefNet) |
 | Region segmentation (Phase 4) | [Florence-2](https://huggingface.co/microsoft/Florence-2-large) (Microsoft), [SAM 2.1](https://github.com/facebookresearch/sam2) (Meta) |
 | Universal inpaint (Phase 5) | [LanPaint](https://github.com/scraed/LanPaint) |
-| Bundled ComfyUI nodes | [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG) (1038lab) — RMBG/BiRefNet/SAM/Grounding |
+| Bundled ComfyUI nodes | [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG) (1038lab) — BiRefNet/SAM/Grounding |
 | LLM gateway | [LiteLLM](https://github.com/BerriAI/litellm) (BerriAI) |
 | Image runtime | [ComfyUI](https://github.com/comfyanonymous/ComfyUI) |
 | Original paradigm | [Nano-Banana 2](https://deepmind.google/) (Google), [GPT-Image-2](https://openai.com/) (OpenAI) |
@@ -277,7 +276,7 @@ protoBanana is a synthesis, not an invention. Credit:
 
 Apache-2.0. Workflows and node-pack dependencies retain their original
 licenses (see `workflows/<name>.json`'s `_doc` field for per-workflow
-notes — RMBG-2.0 is CC BY-NC 4.0 / non-commercial).
+notes — Qwen-Image-2.1 is under the Qwen Research License / non-commercial).
 
 ## Citation
 

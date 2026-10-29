@@ -1,12 +1,11 @@
-"""Outpaint via ImagePadForOutpaint. Workflow stems:
-`outpaint_qwen_image_2_1` (default) and `outpaint_qwen_image_2511`.
+"""Outpaint via ImagePadForOutpaint. Workflow stem: `outpaint_qwen_image_2_1`.
 
 The agent says "extend left", "make this wider", "show more sky above"
 — the splitter in intents/keywords.py turns that into per-side padding
 amounts. ImagePadForOutpaint adds blank pixels in those directions and
 emits an edge mask covering ONLY the new area; a latent noise mask
-confines denoising to that mask, so the original
-image pixels pass through untouched.
+confines denoising to that mask, so the original image pixels pass
+through untouched.
 
 Convention (matches outpaint_qwen_image_2_1.json):
   Node "4"  LoadImage               = init image filename
@@ -16,15 +15,6 @@ Convention (matches outpaint_qwen_image_2_1.json):
   Node "26" SetLatentNoiseMask      = edge mask from the pad
   Node "3"  KSampler                = seed
   Node "28" ImageScale              = back to the padded size (node "27")
-  Node "9"  SaveImage
-
-Convention (matches outpaint_qwen_image_2511.json, legacy):
-  Node "4"  LoadImage                    = init image filename
-  Node "20" ImagePadForOutpaint          = left/top/right/bottom + feathering
-  Node "6"  TextEncodeQwenImageEditPlus  = positive (prompt + image1=padded)
-  Node "7"  TextEncodeQwenImageEditPlus  = negative
-  Node "22" InpaintModelConditioning     = noise_mask=true, mask=edge from pad
-  Node "3"  KSampler                     = seed
   Node "9"  SaveImage
 
 Default per-side amount = 256 px when "extend X" is named without a

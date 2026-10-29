@@ -36,9 +36,13 @@ def test_gen_substitute_2_1():
     assert wf["3"]["inputs"]["seed"] == 7
 
 
-def test_gen_substitute_2512_still_works():
+def test_gen_substitute_clip_text_encode_pair_still_works():
+    """Custom workflows with a CLIPTextEncode pair (the retired 2512 shape)."""
     wf = gen.substitute(
-        LOADER.load("qwen_image_2512"),
+        {
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
+            "7": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
+        },
         prompt="a fox", negative_prompt="blurry", seed=7, width=1024, height=1024,
     )
     assert wf["6"]["inputs"]["text"] == "a fox"

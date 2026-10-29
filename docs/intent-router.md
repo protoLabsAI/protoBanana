@@ -48,7 +48,7 @@ Returns `(latest_user_text, [image_bytes, ...])` with images in
 newest-first order.
 
 **Stop conditions:**
-- Have collected 3 images → done (Qwen-Image-Edit-2511 cap)
+- Have collected 3 images → done (chat-path cap)
 - No more messages
 
 ---
@@ -148,9 +148,9 @@ the workflow's internal rescaling); only GEN uses inferred size.
 
 | Operation | Module | Notes |
 |---|---|---|
-| GEN | `routes.gen` | Default workflow `qwen_image_2512` |
-| EDIT | `routes.edit` | Default workflow `qwen_image_edit_2511`. Single image. |
-| MULTIREF | `routes.multiref` | Default workflow `multiref_qwen_image_2511`. 2-3 images. |
+| GEN | `routes.gen` | Default workflow `qwen_image_2_1` |
+| EDIT | `routes.edit` | Default workflow `qwen_image_edit_2_1`. Single image. |
+| MULTIREF | `routes.multiref` | Default workflow `multiref_qwen_image_2_1`. 2-3 images (chat cap; the route accepts up to 10). |
 | BGREMOVE | `routes.bgremove` | Default workflow `bgremove_birefnet`. Single image. |
 | REGION_EDIT (Phase 4) | (planned `routes.region_edit`) | Falls back to EDIT until Phase 4 ships |
 | INPAINT (Phase 5) | (planned `routes.inpaint`) | Falls back to EDIT until Phase 5 ships |

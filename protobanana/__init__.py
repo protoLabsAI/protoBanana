@@ -1,9 +1,8 @@
 """protoBanana — OSS chat-native image generation + editing on the protoLabs gateway.
 
-Wraps a ComfyUI backend (Qwen-Image-2512 + Qwen-Image-Edit-2511 + Florence-2 +
-SAM 2.1 + BiRefNet/RMBG) as an OpenAI-compatible LiteLLM custom provider. One
-gateway alias drives text-to-image, instruction-edit, multi-reference compose,
-background removal, region-aware edit, inpaint, and outpaint — picked per turn
+Wraps a ComfyUI backend (Qwen-Image-2.1 + SAM 3 + BiRefNet) as an
+OpenAI-compatible LiteLLM custom provider. One gateway alias drives
+text-to-image, instruction-edit, multi-reference compose, background removal, region-aware edit, inpaint, and outpaint — picked per turn
 from a chat-completions message stream.
 
 The published artifact is intended to be `pip install`-able into a LiteLLM

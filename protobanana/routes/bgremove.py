@@ -1,8 +1,8 @@
 """Background removal → transparent PNG ("sticker").
 
-Default workflow uses BiRefNet (open license, commercial-safe). RMBG-2.0 is
-available as `bgremove_rmbg2` workflow stem for non-commercial higher quality
-(CC BY-NC 4.0).
+Uses BiRefNet (MIT, commercial-safe). The non-commercial RMBG-2.0
+workflow was retired; any RMBG-node workflow with the same node IDs still
+works by stem.
 
 Convention (matches bgremove_birefnet.json):
   Node "4"  LoadImage              = init image filename
@@ -19,7 +19,6 @@ from protobanana.client import ComfyUIClient
 from protobanana.workflows.loader import WorkflowLoader
 
 DEFAULT_STEM = "bgremove_birefnet"
-DEFAULT_STEM_NONCOMMERCIAL = "bgremove_rmbg2"
 
 
 def substitute(

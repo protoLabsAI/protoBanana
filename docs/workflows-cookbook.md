@@ -13,15 +13,15 @@ submission.
 Naming convention:
 
 - **Primary use of an upstream model** → use the upstream model name as-is.
-  Examples: `qwen_image_2512.json` (the Qwen-Image-2512 generator),
-  `qwen_image_edit_2511.json` (the Qwen-Image-Edit-2511 editor). This
+  Examples: `qwen_image_2_1.json` (the Qwen-Image-2.1 generator),
+  `qwen_image_edit_2_1.json` (Qwen-Image-2.1 as an editor). This
   keeps stems aligned with what gateway aliases and downstream
   references already call the model.
 - **App-level pattern reusing an upstream model differently** →
   `<operation>_<model>` so the same model can ship in multiple roles.
-  Examples: `multiref_qwen_image_2511.json` (Qwen-Image-Edit-2511 in
-  3-image-input multi-ref mode), `region_edit_florence2_sam2_qwen.json`
-  (queued Phase 4).
+  Examples: `multiref_qwen_image_2_1.json` (Qwen-Image-2.1 in native
+  multi-ref mode), `region_edit_sam3_qwen_image_2_1.json` (SAM 3
+  grounding + Qwen-Image-2.1 masked edit).
 - **Specialized model entirely** → `<operation>_<model>` is fine when
   the model name alone doesn't tell you which op it serves. Example:
   `bgremove_birefnet.json`.
@@ -58,7 +58,7 @@ inline for the next reader:
 {
   "_doc": "Background removal via BiRefNet (commercial-safe).",
   "4": { "class_type": "LoadImage", "inputs": {...} },
-  "10": { "class_type": "RMBG", "inputs": {...} },
+  "10": { "class_type": "BiRefNetRMBG", "inputs": {...} },
   "9": { "class_type": "SaveImage", "inputs": {...} }
 }
 ```
@@ -74,18 +74,17 @@ Convention across protoBanana workflows:
 | `3` | `KSampler` | Sampler — substitute `seed`, `steps`, `cfg` |
 | `4` | `LoadImage` | Init image (single-image workflows) — substitute `image` filename |
 | `5` | `EmptySD3LatentImage` / `EmptyLatentImage` | Canvas — substitute `width`, `height` |
-| `6` | `TextEncodeQwenImageEditPlus` (edit/multiref) **or** `CLIPTextEncode` (gen/bgremove) | Positive prompt — see below |
-| `7` | `TextEncodeQwenImageEditPlus` (edit/multiref) **or** `CLIPTextEncode` (gen/bgremove) | Negative prompt |
+| `6` | `TextEncodeQwenImage21` | Prompt + `negative_prompt` + reference images via `images.image_N` slots (no node `7`) |
 | `8` | `VAEDecode` | Decoder (rarely substituted) |
 | `9` | `SaveImage` | Output (rarely substituted) |
-| `10`-`19` | (model-specific) | E.g. RMBG node, BiRefNet node, etc. |
-| `14` | `ImageScaleToTotalPixels` | Resize to model's native (~1.05M px) |
-| `15` | `VAEEncode` | Encode init image to latent |
+| `10`-`19` | (model-specific) | E.g. the BiRefNet node (`BiRefNetRMBG`) |
+| `24` | `VAEEncode` | Encode init image to latent (masked routes) |
+| `25` | `ImageScaleToTotalPixels` | Resize to ~1MP on a 32px grid (masked routes) |
+| `26` | `SetLatentNoiseMask` | Restrict denoise to the mask (masked routes) |
 | `37` | `UNETLoader` | The diffusion UNet |
 | `38` | `CLIPLoader` | Text encoder loader |
 | `39` | `VAELoader` | VAE loader |
-| `100`-`102` | `LoadImage` | Multi-ref slots (2-3 images) |
-| `110`-`112` | `ImageScaleToTotalPixels` | Multi-ref resizes |
+| `100`, `101`, … | `LoadImage` | Multi-ref slots (up to 10), wired to node `6`'s `images.image_1..N` |
 
 Following this convention means existing routes can sometimes work without
 modification; deviating means you write a new `substitute()`.
@@ -191,9 +190,9 @@ If it's a variant of an existing operation:
 - Just point a new `model_list` entry at the new workflow stem and skip
   the intent/dispatch wiring. Example:
   ```yaml
-  - model_name: protolabs/qwen-image-bgremove-rmbg
+  - model_name: protolabs/qwen-image-edit-turbo
     litellm_params:
-      model: protobanana/bgremove_rmbg2   # different stem, same operation
+      model: protobanana/qwen_image_edit_2_1_turbo   # different stem, same operation
       api_base: http://comfy:8188
     model_info: { mode: image_edit }
   ```

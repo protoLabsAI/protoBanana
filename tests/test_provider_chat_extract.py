@@ -66,7 +66,7 @@ def test_multiple_user_images_collected_newest_first():
 
 
 def test_max_3_images():
-    """Cap at 3 — Qwen-Image-Edit-2511 ceiling."""
+    """Cap at 3 images on the chat path."""
     parts = [{"type": "text", "text": "compose"}]
     for i in range(5):
         parts.append(

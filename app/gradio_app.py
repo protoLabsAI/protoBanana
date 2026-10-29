@@ -888,7 +888,7 @@ def build_app() -> gr.Blocks:
         else:
             with gr.Tab("🔀 Multi-ref"):
                 gr.Markdown(
-                    "Combine 2-3 reference images. Hard cap at 3 (Qwen-Image-Edit-2511 ceiling). "
+                    "Combine 2-3 reference images (Qwen-Image-2.1 attends to each one; the chat path caps at 3). "
                     "Goes through the chat-completions path under the hood."
                 )
                 with gr.Row():
@@ -932,7 +932,7 @@ def build_app() -> gr.Blocks:
         with gr.Tab("🎯 Region edit"):
             gr.Markdown(
                 "Text-grounded inpaint. SAM 3 masks the named region; "
-                "Qwen-Image-Edit-2511 paints inside; the rest of the image is "
+                "Qwen-Image-2.1 paints inside; the rest of the image is "
                 "preserved exactly via composite. Two text fields because "
                 "*what to mask* and *what it becomes* are different things."
             )

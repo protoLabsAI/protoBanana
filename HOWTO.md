@@ -86,8 +86,8 @@ Examples:
 Qwen-Image-2.1 multiref route itself accepts up to 10). If you provide
 more, the provider takes the first 3 in document order.
 
-**Tip:** match perspective and lighting across reference images. The
-2511 model card recommends this for cleaner fusion.
+**Tip:** match perspective and lighting across reference images for
+cleaner fusion.
 
 ---
 
@@ -103,9 +103,8 @@ Trigger words on a turn that has an init image:
 - `"alpha background"` / `"with alpha channel"`
 - `"knock out the background"` / `"isolate the subject"`
 
-Returns a transparent PNG. Default model: BiRefNet (open-license,
-commercial-safe). RMBG-2.0 (higher quality, non-commercial) available
-via the `protolabs/qwen-image-bgremove` alias if explicitly chosen.
+Returns a transparent PNG via BiRefNet (open-license, commercial-safe),
+also callable directly through the `protolabs/qwen-image-bgremove` alias.
 
 ---
 

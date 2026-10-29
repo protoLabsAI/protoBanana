@@ -182,14 +182,13 @@ how you configured `model_list`):
 
 | Alias | Backed by | Operation | Use case |
 |---|---|---|---|
-| `protolabs/qwen-image` | `qwen_image_2_1` | gen | Direct text-to-image (Qwen-Image-2.1, 40 steps, ~29s warm at 1024², native up to 2048²) |
-| `protolabs/qwen-image-2512` | `qwen_image_2512` | gen | Previous-generation quality tier (20 steps), kept for comparison/rollback |
-| `protolabs/qwen-image-turbo` | `qwen_image_2512_turbo` | gen | **Draft tier** — Lightning 4-step fused checkpoint, ~10s warm at 1024² vs ~32s. For prototyping/iteration |
+| `protolabs/qwen-image` | `qwen_image_2_1` | gen | Direct text-to-image (Qwen-Image-2.1, 40 steps, ~31s warm at 1024², native up to 2048²) |
+| `protolabs/qwen-image-2-1-turbo` | `qwen_image_2_1_turbo` | gen | **Draft tier** — Qwen-Image-2.1 Turbo, 8 steps, ~9s warm at 1024² vs ~31s. For prototyping/iteration |
 | `protolabs/qwen-image-edit` | `qwen_image_edit_2_1` | edit | Direct edit (Qwen-Image-2.1 unified gen+edit model, ~38s warm) |
+| `protolabs/qwen-image-edit-turbo` | `qwen_image_edit_2_1_turbo` | edit | **Draft tier** edit — Qwen-Image-2.1 Turbo, ~10-12s warm |
 | `protolabs/qwen-image-chat` | (auto-routes per turn) | gen/edit/multiref/bgremove | **Default for chat clients** |
 | `protolabs/qwen-image-multiref` | `multiref_qwen_image_2_1` | multiref | Native multi-ref compose (up to 10) |
 | `protolabs/qwen-image-bgremove` | `bgremove_birefnet` | bgremove | Direct sticker (commercial license) |
-| `protolabs/qwen-image-bgremove-rmbg` | `bgremove_rmbg2` | bgremove | Direct sticker (RMBG-2.0, NC) |
 | `protolabs/qwen-image-region-edit` | `region_edit_sam3_qwen_image_2_1` | region_edit | SAM-grounded single-object edit |
 | `protolabs/qwen-image-inpaint` | `inpaint_qwen_image_2_1` | inpaint | Masked edit (`mask` in the edits request; transparent = edit) |
 | `protolabs/qwen-image-outpaint` | `outpaint_qwen_image_2_1` | outpaint | Canvas extension (`left/top/right/bottom` extras) |
