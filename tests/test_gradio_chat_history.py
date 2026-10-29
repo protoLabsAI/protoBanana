@@ -146,7 +146,7 @@ def test_timing_line_dropped(red_square_path):
 def test_inpaint_mask_is_openai_convention():
     """Brushed pixels → transparent (edit), the rest opaque (keep). ComfyUI's
     LoadImageMask(alpha) reads mask = 1 - alpha; an L/RGB mask loads all-zero."""
-    from app.gradio_app import _editor_to_init_and_mask
+    from gradio_app import _editor_to_init_and_mask
 
     bg = Image.new("RGB", (64, 64), "white")
     layer = Image.new("RGBA", (64, 64), (0, 0, 0, 0))

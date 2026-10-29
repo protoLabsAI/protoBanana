@@ -45,6 +45,7 @@ small.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import random
 from typing import Any
@@ -169,10 +170,10 @@ async def run(
             "comfyui.upload",
             metadata={"n_refs": len(refs), "size_bytes_total": sum(len(b) for b in refs)},
         ):
-            ref_filenames = [
-                await client.upload_image(raw, filename=f"ref_{i + 1}.png")
+            ref_filenames = list(await asyncio.gather(*(
+                client.upload_image(raw, filename=f"ref_{i + 1}.png")
                 for i, raw in enumerate(refs)
-            ]
+            )))
         wf = substitute(
             wf,
             prompt=prompt,

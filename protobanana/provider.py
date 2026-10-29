@@ -726,7 +726,7 @@ class ProtoBananaProvider(CustomLLM):
             order (newest first)
           - Prior assistant images (markdown data URLs we serialized) → the
             most recent one (next round's edit init)
-          - Stop after MAX images collected (Qwen-Image-Edit-2511 cap = 3)
+          - Stop after MAX images collected (3; the 2.1 multiref route takes up to 10)
         """
         latest_user_text: str = ""
         images: list[bytes] = []

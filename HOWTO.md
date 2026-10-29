@@ -82,7 +82,8 @@ Examples:
 | 2 images: scene + style ref | `"render the scene from image 1 in the style of image 2"` |
 | 3 images: character + outfit + setting | `"the character from image 1, wearing the outfit from image 2, in the setting from image 3"` |
 
-**Hard limit: 3 images.** Qwen-Image-Edit-2511 caps at 3. If you provide
+**Hard limit: 3 images.** The chat path collects at most 3 (the
+Qwen-Image-2.1 multiref route itself accepts up to 10). If you provide
 more, the provider takes the first 3 in document order.
 
 **Tip:** match perspective and lighting across reference images. The
