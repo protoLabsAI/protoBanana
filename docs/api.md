@@ -195,10 +195,6 @@ how you configured `model_list`):
 | `protolabs/qwen-image-outpaint` | `outpaint_qwen_image_2511` | outpaint | Canvas extension (`left/top/right/bottom` extras) |
 | `protolabs/krea2-identity-edit` | `krea2_identity_edit[_two_ref]` | krea2_edit | Identity-preserving edit; two-ref auto-selected when `person_image` is passed |
 
-Not yet in the protoLabs `model_list`: an Ideogram 4 alias (the
-`ideogram_4_fp8` workflow ships in this repo but the deploy hasn't
-exposed it yet).
-
 But end users should mostly just use `protolabs/qwen-image-chat` — the
 chat alias auto-routes.
 
