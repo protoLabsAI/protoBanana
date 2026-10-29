@@ -5,6 +5,16 @@ SemVer.
 
 ## [Unreleased]
 
+### Removed — Ideogram 4 support
+
+- Dropped `routes/ideogram.py`, the `ideogram_*` stem dispatch in
+  `provider.aimage_generation`, the `ideogram_4_fp8` / `ideogram_4_nf4`
+  workflows, the Gradio Ideogram tab (`PROTOBANANA_MODEL_IDEOGRAM`,
+  `ideogram` tab ID) and their tests. Qwen-Image-2.1 renders text well
+  enough to cover the typography use case, and Ideogram never got a live
+  gateway alias (its pipeline cache wedges the A6000). Any `ideogram_*`
+  stem now falls through to `gen.run` and fails on the missing workflow.
+
 ### Added — Qwen-Image-2.1 Turbo workflows
 
 - `qwen_image_2_1_turbo.json` / `qwen_image_edit_2_1_turbo.json`: the
