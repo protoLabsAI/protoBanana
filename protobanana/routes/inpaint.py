@@ -1,5 +1,4 @@
-"""Brushed-mask inpaint. Workflow stems: `inpaint_qwen_image_2_1`
-(default) and `inpaint_qwen_image_2511`.
+"""Brushed-mask inpaint. Workflow stem: `inpaint_qwen_image_2_1`.
 
 The user supplies an init image AND a mask in the OpenAI /images/edits
 convention: RGBA PNG, fully transparent = edit region, opaque = preserve
@@ -27,26 +26,6 @@ The grey fill is load-bearing on 2.1: with the untouched image as the
 reference, the model places the new content wherever it likes and the
 noise mask then discards it (verified live — the masked area came back
 unchanged).
-
-Convention (matches inpaint_qwen_image_2511.json, legacy):
-  Node "4"  LoadImage                    = init image filename
-  Node "20" LoadImageMask                = mask filename (alpha channel)
-  Node "21" GrowMask                     = soft-edge growth (default 6 px)
-  Node "6"  TextEncodeQwenImageEditPlus  = positive (instruction + image1=init)
-  Node "7"  TextEncodeQwenImageEditPlus  = negative
-  Node "22" InpaintModelConditioning     = wraps positive/negative + masked latent
-  Node "3"  KSampler                     = seed
-  Node "23" ImageCompositeMasked         = preserves outside-mask pixels
-  Node "9"  SaveImage                    = output
-
-Why TextEncodeQwenImageEditPlus AND InpaintModelConditioning together:
-- The Plus encoder gives the Qwen2.5-VL vision tower the original image
-  as conditioning so the model "sees" the surrounding context (matches
-  the lit/style of the rest of the photo).
-- InpaintModelConditioning then wraps that conditioning with the mask,
-  so denoising is constrained to the masked region while the model
-  still attends globally.
-- Both layers are needed; either alone produces worse edits.
 """
 
 from __future__ import annotations

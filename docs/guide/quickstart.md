@@ -8,7 +8,7 @@ You need:
 
 - A running [LiteLLM gateway](https://docs.litellm.ai/docs/proxy/quick_start) (or the willingness to spin one up)
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) running on a machine with an NVIDIA GPU (~24 GB VRAM recommended for Qwen-Image FP8)
-- The [Qwen-Image-2512](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI) model files in ComfyUI's standard directories
+- The [Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1) model files in ComfyUI's standard directories (ComfyUI >= 0.37; see [installation](../installation.md))
 
 If you don't have these yet, see the [full Installation guide](/installation).
 
@@ -30,7 +30,7 @@ Add to your `config.yaml`:
 model_list:
   - model_name: protolabs/qwen-image
     litellm_params:
-      model: protobanana/qwen_image_2512
+      model: protobanana/qwen_image_2_1
       api_base: http://your-comfyui-host:8188
     model_info: { mode: image_generation }
 

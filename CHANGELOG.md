@@ -5,6 +5,20 @@ SemVer.
 
 ## [Unreleased]
 
+### Removed — Qwen-Image-2512, Qwen-Image-Edit-2511, RMBG-2.0 workflows
+
+- Deleted `qwen_image_2512`, `qwen_image_2512_turbo`, `qwen_image_edit_2511`,
+  `multiref_qwen_image_2511`, `inpaint_qwen_image_2511`,
+  `outpaint_qwen_image_2511`, `region_edit_sam3_qwen_image_2511` and
+  `bgremove_rmbg2`. Every route now defaults to a Qwen-Image-2.1 stem,
+  and nothing on the protoLabs gateway referenced the retired ones.
+- Multiref drops the 2511 grid-stitch path (`_grid_concat`, `GRID_TILE`)
+  and is native-only; `MAX_REFS` is now 10.
+- `bgremove.DEFAULT_STEM_NONCOMMERCIAL` removed.
+- `gen` / `edit` still substitute CLIPTextEncode-pair and
+  `TextEncodeQwenImageEditPlus` node shapes, so custom workflows in those
+  shapes keep working by stem.
+
 ### Changed — multiref, inpaint, outpaint, region edit on Qwen-Image-2.1
 
 - New workflows `multiref_qwen_image_2_1`, `inpaint_qwen_image_2_1`,

@@ -104,7 +104,7 @@ itself, since all the gateway-side logic runs on your gateway.
 - No streaming; each call is a buffered round-trip
 - Chat history not persisted across reloads (intentional — this is a
   test/eval UI, not a product)
-- Multi-ref hard-capped at 3 (Qwen-Image-Edit-2511 ceiling)
+- Multi-ref hard-capped at 3 (chat-path cap; the direct multiref route accepts up to 10)
 - No mask brushing for Phase 5 inpaint (queued — Gradio's
   `gr.ImageEditor` is the natural surface when we add it)
 

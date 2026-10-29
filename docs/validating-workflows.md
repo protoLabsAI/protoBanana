@@ -23,20 +23,28 @@ For every workflow JSON in `workflows/`:
 python scripts/validate_workflows.py
 
 # Different ComfyUI / different workflows dir / single file
-COMFYUI_BASE_URL=http://protolabs:8188 python scripts/validate_workflows.py workflows/qwen_image_edit_2511.json
+COMFYUI_BASE_URL=http://protolabs:8188 python scripts/validate_workflows.py workflows/qwen_image_edit_2_1.json
 ```
 
 Exit code = number of failed workflows. Output looks like:
 
 ```
 [validator] ComfyUI: http://localhost:8188
-[validator] checking 5 workflow(s)
+[validator] checking 13 workflow(s)
   ✓ bgremove_birefnet.json
-  ✓ bgremove_rmbg2.json
-  ✓ qwen_image_edit_2511.json
-  ✓ qwen_image_2512.json
-  ✓ multiref_qwen_image_2511.json
-[validator] 5/5 workflows pass
+  ✓ inpaint_qwen_image_2_1.json
+  ✓ krea2_identity_edit.json
+  ✓ krea2_identity_edit_realism.json
+  ✓ krea2_identity_edit_realism_two_ref.json
+  ✓ krea2_identity_edit_two_ref.json
+  ✓ multiref_qwen_image_2_1.json
+  ✓ outpaint_qwen_image_2_1.json
+  ✓ qwen_image_2_1.json
+  ✓ qwen_image_2_1_turbo.json
+  ✓ qwen_image_edit_2_1.json
+  ✓ qwen_image_edit_2_1_turbo.json
+  ✓ region_edit_sam3_qwen_image_2_1.json
+[validator] 13/13 workflows pass
 ```
 
 ### As a pytest gate
@@ -60,7 +68,7 @@ When `COMFYUI_BASE_URL` is unset or ComfyUI isn't reachable, the test is skipped
 ## What it doesn't catch
 
 - Whether the workflow produces a *good* image. Static schema validation can't see semantic correctness — that's what benchmarks are for.
-- Whether the model files referenced (`qwen_image_2512_fp8_e4m3fn.safetensors` etc.) exist on disk. ComfyUI rejects at execute time with a clearer error there; not our problem to mirror.
+- Whether the model files referenced (`qwen_image_2.1_bf16.safetensors` etc.) exist on disk. ComfyUI rejects at execute time with a clearer error there; not our problem to mirror.
 - Cross-workflow consistency (e.g. "all workflows use the same VAE filename"). Worth adding if it bites us; not yet.
 - **Whether the workflow's *meaning* matches the model loaded at the UNETLoader node.** This is the load-bearing gap and it bit us on Day 4 — see below.
 
@@ -79,7 +87,7 @@ ImageDraw.Draw(img).ellipse((192, 192, 576, 576), fill=(255, 255, 255))
 
 # 2. Submit the workflow with a prompt that should preserve the structure
 wf = substitute(
-    loader.load("qwen_image_edit_2511"),
+    loader.load("qwen_image_edit_2_1"),
     prompt="change the white circle to a yellow star, keep the red background",
     seed=42,
     image_filename=fname,
@@ -96,7 +104,7 @@ Run this whenever:
 
 - You add a new edit-class workflow
 - You change conditioning topology (which encoder → KSampler)
-- You upgrade the underlying model (e.g. Qwen-Image-Edit 2511 → next version)
+- You upgrade the underlying model (e.g. Qwen-Image-2.1 → next version)
 
 The script lives next to the validator at `scripts/validate_workflows.py`-adjacent (informal — promote to a proper `tests/integration/test_e2e_edit.py` once we have a managed ComfyUI test endpoint).
 

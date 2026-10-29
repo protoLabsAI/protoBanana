@@ -106,7 +106,7 @@ For verbose boot logging set `PROTOBANANA_TRACING_DEBUG=1` before import — pro
 In the Langfuse UI, useful filters when debugging:
 
 - **By operation:** filter `metadata.operation = "edit"` to see only edit traces — quickly compare latency distributions across ops
-- **By workflow:** filter `metadata.workflow_stem = "qwen_image_edit_2511"` when debugging a specific workflow's behavior after a ComfyUI / model upgrade
+- **By workflow:** filter `metadata.workflow_stem = "qwen_image_edit_2_1"` when debugging a specific workflow's behavior after a ComfyUI / model upgrade
 - **Slow requests:** sort `protobanana.acompletion` traces by duration descending; the `comfyui.wait_for_completion` child is almost always the long pole
 - **Failed requests:** filter `level = "ERROR"` — exception type appears in the trace
 

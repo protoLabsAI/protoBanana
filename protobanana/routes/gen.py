@@ -21,7 +21,8 @@ def substitute(
     width: int,
     height: int,
 ) -> dict[str, Any]:
-    """Convention for qwen_image_2512 (and the turbo variant):
+    """Convention for CLIPTextEncode-pair workflows (e.g. the retired
+    qwen_image_2512):
     node "6" CLIPTextEncode = positive
     node "7" CLIPTextEncode = negative
     node "5" EmptySD3LatentImage = canvas dims

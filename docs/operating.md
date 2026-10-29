@@ -13,13 +13,13 @@ different mode is requested. Per-operation peaks:
 
 | Operation | Models loaded | Peak VRAM |
 |---|---|---|
-| Generation | Qwen-Image-2512 + qwen_2.5_vl + VAE | ~30 GB |
-| Edit | Qwen-Image-Edit-2511 + qwen_2.5_vl + VAE | ~30 GB |
-| Multi-ref | Qwen-Image-Edit-2511 + qwen_2.5_vl + VAE (multiple VAE encodes) | ~32 GB |
+| Generation | Qwen-Image-2.1 (bf16 DiT) + qwen3vl_8b int8 + VAE | ~22 GB |
+| Edit | Same as generation | ~22 GB |
+| Multi-ref | Same as generation (one encode per reference) | ~22 GB |
 | BG remove | BiRefNet (alone — text models offloaded) | ~3 GB |
-| Region edit (Phase 4) | Florence-2 + SAM 2.1 + Qwen-Image-Edit | ~33 GB |
-| Inpaint (Phase 5) | Qwen-Image-Edit + LanPaint helper | ~30 GB |
-| Outpaint (Phase 6) | Same as inpaint | ~30 GB |
+| Region edit | SAM 3 + Qwen-Image-2.1 | ~22 GB + SAM 3 |
+| Inpaint | Same as generation | ~22 GB |
+| Outpaint | Same as generation | ~22 GB |
 
 Mode switches cost **5-10s** of model load (UNet swap from system RAM
 or disk). Same-mode steady-state is warm.
@@ -67,9 +67,9 @@ UNet pays a load cost from disk:
 
 | Cold load | Warm |
 |---|---|
-| Qwen-Image-2512 first gen | ~7-10s extra | ~28s total |
-| Qwen-Image-Edit-2511 first edit | ~7-10s extra | ~25s total |
-| Florence-2 first segmentation (Phase 4) | ~3-5s extra | ~3s segment + edit |
+| Qwen-Image-2.1 first gen | not yet measured | ~31s total (~9s turbo) |
+| Qwen-Image-2.1 first edit | not yet measured | ~38s total (~10-12s turbo) |
+| SAM 3 first region edit | not yet measured | ~65s total (incl. SAM 3) |
 
 Switching mode (gen → edit, edit → gen) pays the swap cost again. Steady-state
 chat where users alternate gen/edit/gen is the worst case but is only ~5-10s

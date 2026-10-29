@@ -20,7 +20,8 @@ def substitute(
     seed: int,
     image_filename: str,
 ) -> dict[str, Any]:
-    """Convention for qwen_image_edit_2511:
+    """Convention for Qwen-Image-Edit-Plus-shaped workflows (e.g. the retired
+    qwen_image_edit_2511):
     node "4" LoadImage                  = init image filename (server-side)
     node "6" TextEncodeQwenImageEditPlus = positive (instruction + image1 ref)
     node "7" TextEncodeQwenImageEditPlus = negative (with same image1 ref)

@@ -1,10 +1,9 @@
-"""Agent-driven text-grounded region edit. Workflow stems:
-``region_edit_sam3_qwen_image_2_1`` (default) and
-``region_edit_sam3_qwen_image_2511``.
+"""Agent-driven text-grounded region edit. Workflow stem:
+``region_edit_sam3_qwen_image_2_1``.
 
 The chat agent identifies which sub-region of an image to change, names
 it (``grounding_text``), and says what it should become (``edit_prompt``).
-SAM 3 turns ``grounding_text`` into a mask; Qwen-Image inpaints
+SAM 3 turns ``grounding_text`` into a mask; Qwen-Image-2.1 inpaints
 inside that mask conditioned on the original image and the edit prompt;
 ImageCompositeMasked at the end ensures outside-mask pixels are
 pixel-perfect identical to the input.
@@ -39,17 +38,6 @@ Convention (matches region_edit_sam3_qwen_image_2_1.json):
 
 Unlike inpaint, the reference is NOT grey-filled: the instruction edits
 what is there ("make the sofa green"), so the model must see it.
-
-Convention (matches region_edit_sam3_qwen_image_2511.json, legacy):
-  Node "4"  LoadImage                    = init image filename
-  Node "30" SAM3Segment                  = grounding text → mask
-  Node "31" GrowMask                     = soft-edge growth (8 px)
-  Node "6"  TextEncodeQwenImageEditPlus  = positive (edit_prompt + image1=init)
-  Node "7"  TextEncodeQwenImageEditPlus  = negative
-  Node "22" InpaintModelConditioning     = mask-aware conditioning
-  Node "3"  KSampler                     = seed
-  Node "23" ImageCompositeMasked         = preserve outside-mask
-  Node "9"  SaveImage
 """
 
 from __future__ import annotations

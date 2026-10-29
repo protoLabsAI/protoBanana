@@ -64,7 +64,7 @@ cd ComfyUI-RMBG
 pip install -r requirements.txt   # uses ComfyUI's venv
 ```
 
-Provides: RMBG-2.0, BiRefNet, BEN/BEN2, INSPYRENET, SDMatte, SAM/SAM2/SAM3,
+Provides: BiRefNet, BEN/BEN2, INSPYRENET, SDMatte, SAM/SAM2/SAM3,
 GroundingDINO. All under one install.
 
 ### 2.2 LanPaint (Phase 5)
@@ -86,65 +86,44 @@ sudo systemctl restart comfyui
 
 ## 3. Model files
 
-protoBanana's Phase 1-3 default workflows reference these filenames in
-ComfyUI's standard model directories. Use **cache-only downloads** (no
-`--local-dir`) — see [DECISIONS.md §0004](../DECISIONS.md#0004) for why.
+protoBanana's workflows reference these filenames in ComfyUI's standard
+model directories. Use **cache-only downloads** (no `--local-dir`) — see
+[DECISIONS.md §0004](../DECISIONS.md#0004) for why.
 
-### 3.0 Qwen-Image-2.1 (default generation + edit)
+### 3.1 Qwen-Image-2.1 (gen, edit, multi-ref, inpaint, outpaint, region edit)
 
-One unified model backs both `qwen_image_2_1` (gen) and
-`qwen_image_edit_2_1` (edit). Requires **ComfyUI >= 0.37.0**. It shares
-nothing with the 2512/2511 stack — new DiT, text encoder, and VAE.
+One unified gen+edit model backs every Qwen workflow (`qwen_image_2_1*`,
+`qwen_image_edit_2_1*`, `multiref_*`, `inpaint_*`, `outpaint_*`,
+`region_edit_*`). Requires **ComfyUI >= 0.37.0**. Qwen Research License
+(non-commercial).
 
 ```bash
-HF_HOME=/mnt/models/huggingface hf download Comfy-Org/Qwen-Image-2.1 \
+HF_HOME=/mnt/models/huggingface uvx --from "huggingface_hub[cli]" hf download Comfy-Org/Qwen-Image-2.1 \
   diffusion_models/qwen_image_2.1_bf16.safetensors \
+  diffusion_models/qwen_image_2.1_turbo_bf16.safetensors \
   text_encoders/qwen3vl_8b_int8_convrot.safetensors \
   vae/qwen_image_2.1_vae_bf16.safetensors
-```
-
-Symlink into `models/diffusion_models`, `models/text_encoders`, and
-`models/vae` as in 3.1. Use the **bf16** DiT on Ampere (A6000/3090):
-the `int8_convrot` DiT is ~2.3x slower there. ~22 GB VRAM peak at 1024².
-
-The sections below (2512 / 2511) are still needed for the turbo tier
-and the inpaint / outpaint / multiref / region-edit workflows.
-
-### 3.1 Qwen-Image-2512 (generation, Phase 1)
-
-```bash
-HF_HOME=/mnt/models/huggingface huggingface-cli download Comfy-Org/Qwen-Image_ComfyUI \
-  split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors \
-  split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors \
-  split_files/vae/qwen_image_vae.safetensors
 ```
 
 Symlink into ComfyUI's model dirs (HF cache path will vary by snapshot
 hash; use whichever resolves):
 
 ```bash
-HUB=/mnt/models/huggingface/hub/models--Comfy-Org--Qwen-Image_ComfyUI/snapshots/*
+HUB=/mnt/models/huggingface/hub/models--Comfy-Org--Qwen-Image-2.1/snapshots/*
 
-ln -sf $HUB/split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors \
+ln -sf $HUB/diffusion_models/qwen_image_2.1_bf16.safetensors \
        ~/dev/ComfyUI/models/diffusion_models/
-ln -sf $HUB/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors \
+ln -sf $HUB/diffusion_models/qwen_image_2.1_turbo_bf16.safetensors \
+       ~/dev/ComfyUI/models/diffusion_models/
+ln -sf $HUB/text_encoders/qwen3vl_8b_int8_convrot.safetensors \
        ~/dev/ComfyUI/models/text_encoders/
-ln -sf $HUB/split_files/vae/qwen_image_vae.safetensors \
+ln -sf $HUB/vae/qwen_image_2.1_vae_bf16.safetensors \
        ~/dev/ComfyUI/models/vae/
 ```
 
-### 3.2 Qwen-Image-Edit-2511 (edit + multi-ref, Phase 1+3)
-
-```bash
-HF_HOME=/mnt/models/huggingface huggingface-cli download Comfy-Org/Qwen-Image-Edit_ComfyUI \
-  split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors
-
-# Symlink (text_encoder + vae are shared with Qwen-Image-2512, no extra download needed)
-HUB=/mnt/models/huggingface/hub/models--Comfy-Org--Qwen-Image-Edit_ComfyUI/snapshots/*
-
-ln -sf $HUB/split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors \
-       ~/dev/ComfyUI/models/diffusion_models/
-```
+Use the **bf16** DiT on Ampere (A6000/3090): the `int8_convrot` DiT is
+~2.3x slower there. ~22 GB VRAM peak at 1024² (bf16 DiT + int8 text
+encoder).
 
 Verify ComfyUI sees them:
 
@@ -152,14 +131,14 @@ Verify ComfyUI sees them:
 curl -sS http://localhost:8188/object_info | jq '.UNETLoader.input.required.unet_name[0] | map(select(contains("qwen_image")))'
 ```
 
-Should list both `qwen_image_2512_fp8_e4m3fn.safetensors` and
-`qwen_image_edit_2511_fp8mixed.safetensors`.
+Should list both `qwen_image_2.1_bf16.safetensors` and
+`qwen_image_2.1_turbo_bf16.safetensors`.
 
-### 3.3 BiRefNet / RMBG-2.0 (Phase 2)
+### 3.2 BiRefNet (Phase 2)
 
 Auto-downloaded by ComfyUI-RMBG on first invocation. No manual step.
 
-### 3.4 Florence-2 + SAM 2.1 (Phase 4, queued)
+### 3.3 SAM 3 (region edit)
 
 Same — auto-downloaded by ComfyUI-RMBG when the region-edit workflow
 runs.
@@ -190,14 +169,14 @@ Add to your `config.yaml`:
 model_list:
   - model_name: protolabs/qwen-image
     litellm_params:
-      model: protobanana/qwen_image_2512
+      model: protobanana/qwen_image_2_1
       api_base: http://your-comfyui-host:8188
     model_info:
       mode: image_generation
 
   - model_name: protolabs/qwen-image-edit
     litellm_params:
-      model: protobanana/qwen_image_edit_2511
+      model: protobanana/qwen_image_edit_2_1
       api_base: http://your-comfyui-host:8188
     model_info:
       mode: image_edit

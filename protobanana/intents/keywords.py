@@ -98,8 +98,7 @@ _REGION_SPLITTERS: list[re.Pattern] = [
 # ---- Outpaint direction parsing ------------------------------------------
 
 # Default per-side amount when the user names a direction without a size
-# ("extend left" → 256 px). Matches Qwen-Image-Edit-2511's comfort zone:
-# stays inside the model's ~1.05 MP sweet spot for a 1024-on-side image.
+# ("extend left" → 256 px). Stays inside the model's ~1.05 MP sweet spot for a 1024-on-side image.
 DEFAULT_OUTPAINT_AMOUNT = 256
 
 

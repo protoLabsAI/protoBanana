@@ -31,13 +31,13 @@ features:
     details: Each operation (gen, edit, multi-ref, sticker, region edit, inpaint, outpaint) is one ComfyUI workflow JSON + one Python route. Adding capabilities is mechanical.
   - icon: 🧠
     title: Backed by SOTA OSS models
-    details: Qwen-Image-2512 + Qwen-Image-Edit-2511 (gen+edit, multi-ref) + BiRefNet/RMBG-2.0 (sticker) + Florence-2 + SAM 2.1 (region edit, Phase 4) + LanPaint (inpaint, Phase 5).
+    details: Qwen-Image-2.1 (gen, edit, native multi-ref, inpaint, outpaint, region edit) + BiRefNet (sticker) + SAM 3 (text→mask grounding for region edit).
   - icon: 🏠
     title: All your data, all local
     details: For organizations that can't or won't send data to a third party. Your gateway, your ComfyUI, your weights. We never see a pixel.
   - icon: 📈
     title: Honest about gaps
-    details: 5-15pp behind frontier on hardest cases. 3-reference cap (Qwen ceiling) vs Nano-Banana 2's 14. Where it's good, it's competitive; where it's not, we say so.
+    details: 5-15pp behind frontier on hardest cases. 3-reference cap on the chat path (10 on the direct multiref route) vs Nano-Banana 2's 14. Where it's good, it's competitive; where it's not, we say so.
 ---
 
 ## What it is, in one sentence
