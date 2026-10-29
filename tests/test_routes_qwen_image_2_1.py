@@ -108,3 +108,31 @@ def test_multiref_substitute_2_1_wires_each_ref_natively():
         assert wf["6"]["inputs"][f"images.image_{i + 1}"] == [node_id, 0]
     assert wf["6"]["inputs"]["negative_prompt"] == "blurry"
     assert wf["3"]["inputs"]["latent_image"] == ["6", 2]
+
+
+def _png(img) -> bytes:
+    import io
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_inpaint_normalize_mask_converts_grayscale_white_is_edit():
+    import io
+
+    from PIL import Image, ImageDraw
+
+    gray = Image.new("L", (64, 64), 0)
+    ImageDraw.Draw(gray).rectangle([0, 0, 31, 63], fill=255)
+    out = Image.open(io.BytesIO(inpaint.normalize_mask(_png(gray))))
+    assert out.mode == "RGBA"
+    assert out.getpixel((10, 10))[3] == 0      # white → transparent → edit
+    assert out.getpixel((50, 10))[3] == 255    # black → opaque → keep
+
+
+def test_inpaint_normalize_mask_passes_rgba_through():
+    from PIL import Image
+
+    rgba = _png(Image.new("RGBA", (8, 8), (0, 0, 0, 0)))
+    assert inpaint.normalize_mask(rgba) == rgba
