@@ -1,4 +1,18 @@
-"""Multi-reference compose. Workflow stem: `multiref_qwen_image_2511`.
+"""Multi-reference compose. Workflow stems: `multiref_qwen_image_2_1`
+(default, native multi-ref) and `multiref_qwen_image_2511` (grid stitch).
+
+Qwen-Image-2.1 — native
+-----------------------
+
+`TextEncodeQwenImage21` takes up to 16 references via `images.image_N`
+autogrow slots and genuinely attends to each one (refs can be named in
+the prompt as `<image1>`, `<image2>`, ...). The workflow ships with one
+LoadImage (100) wired to `images.image_1`; `substitute` clones it to
+101, 102, ... for the extra refs. The sampler latent comes from the
+encoder (node 6, output 2) and takes the first ref's aspect.
+
+Qwen-Image-Edit-2511 — grid stitch (legacy)
+-------------------------------------------
 
 Background — what we tried first and why it didn't work
 -------------------------------------------------------
@@ -31,6 +45,7 @@ small.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import random
 from typing import Any
@@ -41,8 +56,9 @@ from protobanana._tracing import trace_span
 from protobanana.client import ComfyUIClient
 from protobanana.workflows.loader import WorkflowLoader
 
-DEFAULT_STEM = "multiref_qwen_image_2511"
-MAX_REFS = 4
+DEFAULT_STEM = "multiref_qwen_image_2_1"
+MAX_REFS = 4  # grid path
+MAX_NATIVE_REFS = 10
 GRID_TILE = 768  # each ref is letterboxed into GRID_TILE x GRID_TILE
 
 
@@ -92,16 +108,30 @@ def substitute(
     prompt: str,
     negative_prompt: str,
     seed: int,
-    grid_filename: str,
+    grid_filename: str | None = None,
+    ref_filenames: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Wire the uploaded grid into LoadImage(100) and stamp prompts/seed."""
-    if "100" in workflow and workflow["100"].get("class_type") == "LoadImage":
+    """Wire the uploaded grid (2511) or each ref (2.1, `ref_filenames`)
+    into LoadImage(100...) and stamp prompts/seed."""
+    if _is_native(workflow) and ref_filenames:
+        template = workflow["100"]
+        for i, filename in enumerate(ref_filenames):
+            node_id = str(100 + i)
+            workflow[node_id] = {**template, "inputs": {**template["inputs"], "image": filename}}
+            workflow["6"]["inputs"][f"images.image_{i + 1}"] = [node_id, 0]
+    elif "100" in workflow and workflow["100"].get("class_type") == "LoadImage":
         workflow["100"]["inputs"]["image"] = grid_filename
+    if "6" in workflow and workflow["6"].get("class_type") == "TextEncodeQwenImage21":
+        workflow["6"]["inputs"]["negative_prompt"] = negative_prompt
     _set_prompt(workflow, "6", prompt)
     _set_prompt(workflow, "7", negative_prompt)
     if "3" in workflow and workflow["3"].get("class_type") == "KSampler":
         workflow["3"]["inputs"]["seed"] = seed
     return workflow
+
+
+def _is_native(workflow: dict[str, Any]) -> bool:
+    return workflow.get("6", {}).get("class_type") == "TextEncodeQwenImage21"
 
 
 def _set_prompt(workflow: dict[str, Any], node_id: str, text: str) -> None:
@@ -110,7 +140,7 @@ def _set_prompt(workflow: dict[str, Any], node_id: str, text: str) -> None:
         return
     node = workflow[node_id]
     ct = node.get("class_type", "")
-    if ct.startswith("TextEncodeQwenImageEdit"):
+    if ct.startswith("TextEncodeQwenImageEdit") or ct == "TextEncodeQwenImage21":
         node["inputs"]["prompt"] = text
     elif ct == "CLIPTextEncode":
         node["inputs"]["text"] = text
@@ -131,31 +161,50 @@ async def run(
         raise ValueError("multiref requires at least one init image")
     seed = seed if seed is not None else random.randint(0, 2**32 - 1)
 
-    refs = init_image_bytes_list[:MAX_REFS]
+    wf = loader.load(workflow_stem)
+    native = _is_native(wf)
+    refs = init_image_bytes_list[: MAX_NATIVE_REFS if native else MAX_REFS]
 
-    with trace_span(
-        "multiref.grid_concat",
-        metadata={
-            "n_refs": len(refs),
-            "size_bytes_total": sum(len(b) for b in refs),
-        },
-    ) as concat_span:
-        grid_bytes = _grid_concat(refs)
-        concat_span.update(metadata={"grid_bytes": len(grid_bytes)})
+    if native:
+        with trace_span(
+            "comfyui.upload",
+            metadata={"n_refs": len(refs), "size_bytes_total": sum(len(b) for b in refs)},
+        ):
+            ref_filenames = list(await asyncio.gather(*(
+                client.upload_image(raw, filename=f"ref_{i + 1}.png")
+                for i, raw in enumerate(refs)
+            )))
+        wf = substitute(
+            wf,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            seed=int(seed),
+            ref_filenames=ref_filenames,
+        )
+    else:
+        with trace_span(
+            "multiref.grid_concat",
+            metadata={
+                "n_refs": len(refs),
+                "size_bytes_total": sum(len(b) for b in refs),
+            },
+        ) as concat_span:
+            grid_bytes = _grid_concat(refs)
+            concat_span.update(metadata={"grid_bytes": len(grid_bytes)})
 
-    with trace_span(
-        "comfyui.upload",
-        metadata={"grid_bytes": len(grid_bytes)},
-    ):
-        grid_filename = await client.upload_image(grid_bytes, filename="ref_grid.png")
+        with trace_span(
+            "comfyui.upload",
+            metadata={"grid_bytes": len(grid_bytes)},
+        ):
+            grid_filename = await client.upload_image(grid_bytes, filename="ref_grid.png")
 
-    wf = substitute(
-        loader.load(workflow_stem),
-        prompt=prompt,
-        negative_prompt=negative_prompt,
-        seed=int(seed),
-        grid_filename=grid_filename,
-    )
+        wf = substitute(
+            wf,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            seed=int(seed),
+            grid_filename=grid_filename,
+        )
 
     with trace_span(
         "comfyui.submit",

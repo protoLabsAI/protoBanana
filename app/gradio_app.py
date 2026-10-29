@@ -652,10 +652,13 @@ def _editor_to_init_and_mask(editor_value):
     gr.ImageEditor returns {"background": PIL, "layers": [PIL...],
     "composite": PIL}. The user paints brush strokes onto layer 0; the
     layer is RGBA where the alpha channel encodes the paint coverage.
-    We threshold alpha → grayscale mask (white = brushed = repaint,
-    black = untouched = preserve), then convert to RGB so it serializes
-    cleanly through the OpenAI multipart endpoint.
+    We threshold alpha into an OpenAI-convention RGBA mask: brushed pixels
+    are fully transparent (= repaint), everything else opaque (= preserve).
+    ComfyUI's LoadImageMask(alpha) reads exactly that (mask = 1 - alpha);
+    a mask with no alpha channel loads as all-zero and edits nothing.
     """
+    from PIL import Image
+
     if not editor_value:
         return None, None
     bg = editor_value.get("background")
@@ -680,9 +683,11 @@ def _editor_to_init_and_mask(editor_value):
             composite_alpha = ImageChops.lighter(composite_alpha, alpha)
     if composite_alpha is None:
         return init_rgb, None
-    # Threshold so anything painted (alpha > 32) becomes pure white.
-    mask_l = composite_alpha.point(lambda v: 255 if v > 32 else 0, mode="L")
-    return init_rgb, mask_l.convert("RGB")
+    # Threshold so anything painted (alpha > 32) becomes fully transparent.
+    keep_alpha = composite_alpha.point(lambda v: 0 if v > 32 else 255, mode="L")
+    mask = Image.new("RGBA", keep_alpha.size, (0, 0, 0, 255))
+    mask.putalpha(keep_alpha)
+    return init_rgb, mask
 
 
 def fn_inpaint(

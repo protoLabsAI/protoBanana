@@ -5,6 +5,25 @@ SemVer.
 
 ## [Unreleased]
 
+### Changed — multiref, inpaint, outpaint, region edit on Qwen-Image-2.1
+
+- New workflows `multiref_qwen_image_2_1`, `inpaint_qwen_image_2_1`,
+  `outpaint_qwen_image_2_1`, `region_edit_sam3_qwen_image_2_1`; each
+  route's `DEFAULT_STEM` points at them. The 2511 workflows still ship
+  and still work.
+- Multiref on 2.1 wires every ref into its own `images.image_N` slot
+  (up to 10) instead of stitching a grid — 2.1 actually attends to each
+  ref, and prompts can name them as `<image1>`, `<image2>`.
+- Masked routes swap `InpaintModelConditioning` for VAEEncode +
+  `SetLatentNoiseMask`, pre-scaling to ~1 MP on a 32 px grid so the
+  reference and sampled latents line up. Inpaint grey-fills the masked
+  area in the reference: without it 2.1 places the new content wherever
+  it likes and the noise mask discards it.
+- Fixed: the Gradio Inpaint tab sent a grayscale "white = edit" mask.
+  ComfyUI 0.37's `LoadImageMask(alpha)` loads a mask with no alpha
+  channel as all-zero, so the tab edited nothing. It now sends the
+  OpenAI convention (RGBA, transparent = edit).
+
 ### Removed — Ideogram 4 support
 
 - Dropped `routes/ideogram.py`, the `ideogram_*` stem dispatch in

@@ -1,0 +1,229 @@
+{
+  "4": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "init.png"
+    }
+  },
+  "20": {
+    "class_type": "LoadImageMask",
+    "inputs": {
+      "image": "mask.png",
+      "channel": "alpha"
+    }
+  },
+  "21": {
+    "class_type": "GrowMask",
+    "inputs": {
+      "mask": [
+        "20",
+        0
+      ],
+      "expand": 6,
+      "tapered_corners": true
+    }
+  },
+  "25": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 1.05,
+      "resolution_steps": 32,
+      "image": [
+        "4",
+        0
+      ]
+    }
+  },
+  "6": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "prompt": "make the brushed region match this description",
+      "negative_prompt": "low quality, blurry, distorted",
+      "resolution": 0,
+      "clip": [
+        "38",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "images.image_1": [
+        "29",
+        0
+      ]
+    }
+  },
+  "24": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "25",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
+    }
+  },
+  "26": {
+    "class_type": "SetLatentNoiseMask",
+    "inputs": {
+      "samples": [
+        "24",
+        0
+      ],
+      "mask": [
+        "21",
+        0
+      ]
+    }
+  },
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 0,
+      "steps": 40,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": [
+        "40",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "6",
+        1
+      ],
+      "latent_image": [
+        "26",
+        0
+      ]
+    }
+  },
+  "23": {
+    "class_type": "ImageCompositeMasked",
+    "inputs": {
+      "destination": [
+        "4",
+        0
+      ],
+      "source": [
+        "8",
+        0
+      ],
+      "x": 0,
+      "y": 0,
+      "resize_source": true,
+      "mask": [
+        "21",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "protobanana-inpaint",
+      "images": [
+        "23",
+        0
+      ]
+    }
+  },
+  "37": {
+    "inputs": {
+      "unet_name": "qwen_image_2.1_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader"
+  },
+  "38": {
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image"
+    },
+    "class_type": "CLIPLoader"
+  },
+  "39": {
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    },
+    "class_type": "VAELoader"
+  },
+  "40": {
+    "inputs": {
+      "model": [
+        "37",
+        0
+      ],
+      "device": "auto",
+      "dtype": "default"
+    },
+    "class_type": "QwenImage21Cache"
+  },
+  "27": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": [
+        "25",
+        0
+      ]
+    }
+  },
+  "28": {
+    "class_type": "EmptyImage",
+    "inputs": {
+      "width": [
+        "27",
+        0
+      ],
+      "height": [
+        "27",
+        1
+      ],
+      "batch_size": 1,
+      "color": 8421504
+    }
+  },
+  "29": {
+    "class_type": "ImageCompositeMasked",
+    "inputs": {
+      "destination": [
+        "25",
+        0
+      ],
+      "source": [
+        "28",
+        0
+      ],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": [
+        "21",
+        0
+      ]
+    }
+  }
+}

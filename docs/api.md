@@ -187,12 +187,12 @@ how you configured `model_list`):
 | `protolabs/qwen-image-turbo` | `qwen_image_2512_turbo` | gen | **Draft tier** — Lightning 4-step fused checkpoint, ~10s warm at 1024² vs ~32s. For prototyping/iteration |
 | `protolabs/qwen-image-edit` | `qwen_image_edit_2_1` | edit | Direct edit (Qwen-Image-2.1 unified gen+edit model, ~38s warm) |
 | `protolabs/qwen-image-chat` | (auto-routes per turn) | gen/edit/multiref/bgremove | **Default for chat clients** |
-| `protolabs/qwen-image-multiref` | `multiref_qwen_image_2511` | multiref | 2–3 ref compose (chat channel) |
+| `protolabs/qwen-image-multiref` | `multiref_qwen_image_2_1` | multiref | Native multi-ref compose (up to 10) |
 | `protolabs/qwen-image-bgremove` | `bgremove_birefnet` | bgremove | Direct sticker (commercial license) |
 | `protolabs/qwen-image-bgremove-rmbg` | `bgremove_rmbg2` | bgremove | Direct sticker (RMBG-2.0, NC) |
-| `protolabs/qwen-image-region-edit` | `region_edit_sam3_qwen_image_2511` | region_edit | SAM-grounded single-object edit |
-| `protolabs/qwen-image-inpaint` | `inpaint_qwen_image_2511` | inpaint | Masked edit (`mask` in the edits request) |
-| `protolabs/qwen-image-outpaint` | `outpaint_qwen_image_2511` | outpaint | Canvas extension (`left/top/right/bottom` extras) |
+| `protolabs/qwen-image-region-edit` | `region_edit_sam3_qwen_image_2_1` | region_edit | SAM-grounded single-object edit |
+| `protolabs/qwen-image-inpaint` | `inpaint_qwen_image_2_1` | inpaint | Masked edit (`mask` in the edits request; transparent = edit) |
+| `protolabs/qwen-image-outpaint` | `outpaint_qwen_image_2_1` | outpaint | Canvas extension (`left/top/right/bottom` extras) |
 | `protolabs/krea2-identity-edit` | `krea2_identity_edit[_two_ref]` | krea2_edit | Identity-preserving edit; two-ref auto-selected when `person_image` is passed |
 
 But end users should mostly just use `protolabs/qwen-image-chat` — the

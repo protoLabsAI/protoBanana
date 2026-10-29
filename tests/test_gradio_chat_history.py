@@ -141,3 +141,17 @@ def test_timing_line_dropped(red_square_path):
     # The assistant turn collapses to nothing; only the user message remains
     assert len(msgs) == 1
     assert msgs[0]["role"] == "user"
+
+
+def test_inpaint_mask_is_openai_convention():
+    """Brushed pixels → transparent (edit), the rest opaque (keep). ComfyUI's
+    LoadImageMask(alpha) reads mask = 1 - alpha; an L/RGB mask loads all-zero."""
+    from gradio_app import _editor_to_init_and_mask
+
+    bg = Image.new("RGB", (64, 64), "white")
+    layer = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    ImageDraw.Draw(layer).rectangle([0, 0, 31, 63], fill=(255, 255, 255, 255))
+    _, mask = _editor_to_init_and_mask({"background": bg, "layers": [layer]})
+    assert mask.mode == "RGBA"
+    assert mask.getpixel((10, 10))[3] == 0      # brushed → edit
+    assert mask.getpixel((50, 10))[3] == 255    # untouched → keep
