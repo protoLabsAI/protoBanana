@@ -1,4 +1,4 @@
-"""Text-to-image generation. Workflow stem: `qwen_image_2512`."""
+"""Text-to-image generation. Workflow stem: `qwen_image_2_1`."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from protobanana._tracing import trace_span
 from protobanana.client import ComfyUIClient
 from protobanana.workflows.loader import WorkflowLoader
 
-DEFAULT_STEM = "qwen_image_2512"
+DEFAULT_STEM = "qwen_image_2_1"
 
 
 def substitute(
@@ -21,12 +21,19 @@ def substitute(
     width: int,
     height: int,
 ) -> dict[str, Any]:
-    """Convention for qwen_image_2512:
+    """Convention for qwen_image_2512 (and the turbo variant):
     node "6" CLIPTextEncode = positive
     node "7" CLIPTextEncode = negative
     node "5" EmptySD3LatentImage = canvas dims
     node "3" KSampler         = seed
+
+    qwen_image_2_1 folds both prompts into one node:
+    node "6" TextEncodeQwenImage21 = prompt + negative_prompt (no node "7").
+    The negative is inert while the workflow runs cfg=1 (the official path).
     """
+    if "6" in workflow and workflow["6"].get("class_type") == "TextEncodeQwenImage21":
+        workflow["6"]["inputs"]["prompt"] = prompt
+        workflow["6"]["inputs"]["negative_prompt"] = negative_prompt
     if "6" in workflow and workflow["6"].get("class_type") == "CLIPTextEncode":
         workflow["6"]["inputs"]["text"] = prompt
     if "7" in workflow and workflow["7"].get("class_type") == "CLIPTextEncode":

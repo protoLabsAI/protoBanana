@@ -1,4 +1,4 @@
-"""Single-image instruction edit. Workflow stem: `qwen_image_edit_2511`."""
+"""Single-image instruction edit. Workflow stem: `qwen_image_edit_2_1`."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from protobanana._tracing import trace_span
 from protobanana.client import ComfyUIClient
 from protobanana.workflows.loader import WorkflowLoader
 
-DEFAULT_STEM = "qwen_image_edit_2511"
+DEFAULT_STEM = "qwen_image_edit_2_1"
 
 
 def substitute(
@@ -27,9 +27,16 @@ def substitute(
     node "3" KSampler                    = seed
     Width/height are NOT substituted; node "14" ImageScaleToTotalPixels
     rescales the input to ~1.05M px (model native).
+
+    qwen_image_edit_2_1 folds both prompts into one node:
+    node "6" TextEncodeQwenImage21 = prompt + negative_prompt + image ref
+    (no node "7"); its `resolution` input does the rescale and it emits the
+    sampler latent itself.
     """
     if "4" in workflow and workflow["4"].get("class_type") == "LoadImage":
         workflow["4"]["inputs"]["image"] = image_filename
+    if "6" in workflow and workflow["6"].get("class_type") == "TextEncodeQwenImage21":
+        workflow["6"]["inputs"]["negative_prompt"] = negative_prompt
     _set_prompt(workflow, "6", prompt)
     _set_prompt(workflow, "7", negative_prompt)
     if "3" in workflow and workflow["3"].get("class_type") == "KSampler":
@@ -43,7 +50,7 @@ def _set_prompt(workflow: dict[str, Any], node_id: str, text: str) -> None:
         return
     node = workflow[node_id]
     ct = node.get("class_type", "")
-    if ct.startswith("TextEncodeQwenImageEdit"):
+    if ct.startswith("TextEncodeQwenImageEdit") or ct == "TextEncodeQwenImage21":
         node["inputs"]["prompt"] = text
     elif ct == "CLIPTextEncode":
         node["inputs"]["text"] = text
