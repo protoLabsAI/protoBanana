@@ -3,8 +3,10 @@
 
 The user supplies an init image AND a mask in the OpenAI /images/edits
 convention: RGBA PNG, fully transparent = edit region, opaque = preserve
-(LoadImageMask reads alpha as mask = 1 - alpha; a mask without an alpha
-channel loads as all-zero and edits nothing). Inside the masked region
+(LoadImageMask reads alpha as mask = 1 - alpha). A grayscale / RGB mask
+(white = edit, black = preserve) is also accepted: `normalize_mask`
+converts it, since ComfyUI would load a mask with no alpha channel as
+all-zero and silently edit nothing. Inside the masked region
 the model paints new content per the prompt; outside is preserved
 pixel-perfect via an ImageCompositeMasked at the end of the workflow.
 
@@ -49,14 +51,34 @@ Why TextEncodeQwenImageEditPlus AND InpaintModelConditioning together:
 
 from __future__ import annotations
 
+import io
 import random
 from typing import Any
+
+from PIL import Image
 
 from protobanana._tracing import trace_span
 from protobanana.client import ComfyUIClient
 from protobanana.workflows.loader import WorkflowLoader
 
 DEFAULT_STEM = "inpaint_qwen_image_2_1"
+
+
+def normalize_mask(mask_bytes: bytes) -> bytes:
+    """Return an OpenAI-convention RGBA mask (transparent = edit).
+
+    Masks that already carry alpha pass through untouched. Masks without
+    one are read as luminance, white = edit, and inverted into alpha.
+    """
+    mask = Image.open(io.BytesIO(mask_bytes))
+    if "A" in mask.getbands() or "transparency" in mask.info:
+        return mask_bytes
+    keep_alpha = mask.convert("L").point(lambda v: 0 if v > 127 else 255)
+    out = Image.new("RGBA", keep_alpha.size, (0, 0, 0, 255))
+    out.putalpha(keep_alpha)
+    buf = io.BytesIO()
+    out.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def substitute(
@@ -111,6 +133,7 @@ async def run(
     if not mask_bytes:
         raise ValueError("inpaint requires a mask (alpha PNG)")
     seed = seed if seed is not None else random.randint(0, 2**32 - 1)
+    mask_bytes = normalize_mask(mask_bytes)
 
     with trace_span(
         "comfyui.upload",

@@ -23,6 +23,10 @@ SemVer.
   ComfyUI 0.37's `LoadImageMask(alpha)` loads a mask with no alpha
   channel as all-zero, so the tab edited nothing. It now sends the
   OpenAI convention (RGBA, transparent = edit).
+- The inpaint route now also accepts grayscale / RGB masks (white =
+  edit) and converts them to the OpenAI convention before upload, so API
+  callers using the old documented convention work again instead of
+  getting a silent no-op.
 
 ### Removed — Ideogram 4 support
 
