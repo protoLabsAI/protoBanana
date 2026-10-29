@@ -1,13 +1,24 @@
-"""Outpaint via Qwen-Image-Edit-2511 + ImagePadForOutpaint.
+"""Outpaint via ImagePadForOutpaint. Workflow stems:
+`outpaint_qwen_image_2_1` (default) and `outpaint_qwen_image_2511`.
 
 The agent says "extend left", "make this wider", "show more sky above"
 — the splitter in intents/keywords.py turns that into per-side padding
 amounts. ImagePadForOutpaint adds blank pixels in those directions and
-emits an edge mask covering ONLY the new area; InpaintModelConditioning
-+ noise_mask=True confines denoising to that mask, so the original
+emits an edge mask covering ONLY the new area; a latent noise mask
+confines denoising to that mask, so the original
 image pixels pass through untouched.
 
-Convention (matches outpaint_qwen_image_2511.json):
+Convention (matches outpaint_qwen_image_2_1.json):
+  Node "4"  LoadImage               = init image filename
+  Node "20" ImagePadForOutpaint     = left/top/right/bottom + feathering
+  Node "25" ImageScaleToTotalPixels = padded image to ~1 MP, 32 px grid
+  Node "6"  TextEncodeQwenImage21   = prompt + negative + padded ref
+  Node "26" SetLatentNoiseMask      = edge mask from the pad
+  Node "3"  KSampler                = seed
+  Node "28" ImageScale              = back to the padded size (node "27")
+  Node "9"  SaveImage
+
+Convention (matches outpaint_qwen_image_2511.json, legacy):
   Node "4"  LoadImage                    = init image filename
   Node "20" ImagePadForOutpaint          = left/top/right/bottom + feathering
   Node "6"  TextEncodeQwenImageEditPlus  = positive (prompt + image1=padded)
@@ -29,7 +40,7 @@ from protobanana._tracing import trace_span
 from protobanana.client import ComfyUIClient
 from protobanana.workflows.loader import WorkflowLoader
 
-DEFAULT_STEM = "outpaint_qwen_image_2511"
+DEFAULT_STEM = "outpaint_qwen_image_2_1"
 DEFAULT_FEATHERING = 24
 
 
@@ -55,6 +66,8 @@ def substitute(
         workflow["20"]["inputs"]["right"] = max(0, int(right))
         workflow["20"]["inputs"]["bottom"] = max(0, int(bottom))
         workflow["20"]["inputs"]["feathering"] = max(0, int(feathering))
+    if "6" in workflow and workflow["6"].get("class_type") == "TextEncodeQwenImage21":
+        workflow["6"]["inputs"]["negative_prompt"] = negative_prompt
     _set_prompt(workflow, "6", prompt)
     _set_prompt(workflow, "7", negative_prompt)
     if "3" in workflow and workflow["3"].get("class_type") == "KSampler":
@@ -68,7 +81,7 @@ def _set_prompt(workflow: dict[str, Any], node_id: str, text: str) -> None:
         return
     node = workflow[node_id]
     ct = node.get("class_type", "")
-    if ct.startswith("TextEncodeQwenImageEdit"):
+    if ct.startswith("TextEncodeQwenImageEdit") or ct == "TextEncodeQwenImage21":
         node["inputs"]["prompt"] = text
     elif ct == "CLIPTextEncode":
         node["inputs"]["text"] = text

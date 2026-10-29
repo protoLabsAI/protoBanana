@@ -1,11 +1,32 @@
-"""Brushed-mask inpaint via Qwen-Image-Edit-2511.
+"""Brushed-mask inpaint. Workflow stems: `inpaint_qwen_image_2_1`
+(default) and `inpaint_qwen_image_2511`.
 
-The user supplies an init image AND a mask (alpha PNG, white = edit
-region, black = preserve). Inside the masked region the model paints
-new content per the prompt; outside is preserved pixel-perfect via an
-ImageCompositeMasked at the end of the workflow.
+The user supplies an init image AND a mask in the OpenAI /images/edits
+convention: RGBA PNG, fully transparent = edit region, opaque = preserve
+(LoadImageMask reads alpha as mask = 1 - alpha; a mask without an alpha
+channel loads as all-zero and edits nothing). Inside the masked region
+the model paints new content per the prompt; outside is preserved
+pixel-perfect via an ImageCompositeMasked at the end of the workflow.
 
-Convention (matches inpaint_qwen_image_2511.json):
+Convention (matches inpaint_qwen_image_2_1.json):
+  Node "4"  LoadImage              = init image filename
+  Node "20" LoadImageMask          = mask filename (alpha channel)
+  Node "21" GrowMask               = soft-edge growth (default 6 px)
+  Node "25" ImageScaleToTotalPixels = ~1 MP on a 32 px grid, so the
+                                     reference and sampled latents match
+  Node "29" ImageCompositeMasked   = mask area filled grey in the reference
+  Node "6"  TextEncodeQwenImage21  = prompt + negative + grey-filled ref
+  Node "26" SetLatentNoiseMask     = confines denoising to the mask
+  Node "3"  KSampler               = seed
+  Node "23" ImageCompositeMasked   = preserves outside-mask pixels
+  Node "9"  SaveImage
+
+The grey fill is load-bearing on 2.1: with the untouched image as the
+reference, the model places the new content wherever it likes and the
+noise mask then discards it (verified live — the masked area came back
+unchanged).
+
+Convention (matches inpaint_qwen_image_2511.json, legacy):
   Node "4"  LoadImage                    = init image filename
   Node "20" LoadImageMask                = mask filename (alpha channel)
   Node "21" GrowMask                     = soft-edge growth (default 6 px)
@@ -35,7 +56,7 @@ from protobanana._tracing import trace_span
 from protobanana.client import ComfyUIClient
 from protobanana.workflows.loader import WorkflowLoader
 
-DEFAULT_STEM = "inpaint_qwen_image_2511"
+DEFAULT_STEM = "inpaint_qwen_image_2_1"
 
 
 def substitute(
@@ -52,6 +73,8 @@ def substitute(
         workflow["4"]["inputs"]["image"] = image_filename
     if "20" in workflow and workflow["20"].get("class_type") == "LoadImageMask":
         workflow["20"]["inputs"]["image"] = mask_filename
+    if "6" in workflow and workflow["6"].get("class_type") == "TextEncodeQwenImage21":
+        workflow["6"]["inputs"]["negative_prompt"] = negative_prompt
     _set_prompt(workflow, "6", prompt)
     _set_prompt(workflow, "7", negative_prompt)
     if "3" in workflow and workflow["3"].get("class_type") == "KSampler":
@@ -65,7 +88,7 @@ def _set_prompt(workflow: dict[str, Any], node_id: str, text: str) -> None:
         return
     node = workflow[node_id]
     ct = node.get("class_type", "")
-    if ct.startswith("TextEncodeQwenImageEdit"):
+    if ct.startswith("TextEncodeQwenImageEdit") or ct == "TextEncodeQwenImage21":
         node["inputs"]["prompt"] = text
     elif ct == "CLIPTextEncode":
         node["inputs"]["text"] = text

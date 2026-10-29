@@ -79,8 +79,8 @@ questions, and `"remove the bg, then put a sunset behind"` chains all
 work — see [docs/agent.md](docs/agent.md). Falls back to a deterministic
 keyword classifier when no LLM endpoint is configured.
 
-Backed by Qwen-Image-2512 (gen) + Qwen-Image-Edit-2511 (edit, multi-ref,
-inpaint, outpaint, region edit) + BiRefNet/RMBG-2.0 (sticker) + SAM 3
+Backed by Qwen-Image-2.1 (gen, edit, native multi-ref, inpaint, outpaint,
+region edit) + BiRefNet/RMBG-2.0 (sticker) + SAM 3
 (text→mask grounding for region edit). All seven phases shipped.
 
 ## Why this exists
@@ -197,8 +197,7 @@ See [docs/installation.md](docs/installation.md) for the full setup
                           │
                           ▼
                        ComfyUI
-            (Qwen-Image-2512 / Qwen-Image-Edit-2511 /
-                 BiRefNet / RMBG-2.0 / SAM 3)
+        (Qwen-Image-2.1 / BiRefNet / RMBG-2.0 / SAM 3)
 ```
 
 The chat agent is the default; the keyword classifier kicks in only when
@@ -265,7 +264,7 @@ protoBanana is a synthesis, not an invention. Credit:
 
 | Component | Source |
 |---|---|
-| Image gen + edit | [Qwen-Image](https://huggingface.co/Qwen/Qwen-Image), [Qwen-Image-Edit-2511](https://huggingface.co/Qwen/Qwen-Image-Edit-2511) (Alibaba) |
+| Image gen + edit | [Qwen-Image-2.1](https://github.com/QwenLM/Qwen-Image-2.1) (Alibaba; Qwen Research License) — legacy 2512 / Edit-2511 workflows still ship |
 | Background removal | [BiRefNet](https://github.com/ZhengPeng7/BiRefNet), [RMBG-2.0](https://huggingface.co/briaai/RMBG-2.0) (BRIA) |
 | Region segmentation (Phase 4) | [Florence-2](https://huggingface.co/microsoft/Florence-2-large) (Microsoft), [SAM 2.1](https://github.com/facebookresearch/sam2) (Meta) |
 | Universal inpaint (Phase 5) | [LanPaint](https://github.com/scraed/LanPaint) |

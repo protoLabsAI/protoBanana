@@ -1,9 +1,10 @@
-"""Agent-driven text-grounded region edit. Workflow stem:
+"""Agent-driven text-grounded region edit. Workflow stems:
+``region_edit_sam3_qwen_image_2_1`` (default) and
 ``region_edit_sam3_qwen_image_2511``.
 
 The chat agent identifies which sub-region of an image to change, names
 it (``grounding_text``), and says what it should become (``edit_prompt``).
-SAM 3 turns ``grounding_text`` into a mask; Qwen-Image-Edit-2511 inpaints
+SAM 3 turns ``grounding_text`` into a mask; Qwen-Image inpaints
 inside that mask conditioned on the original image and the edit prompt;
 ImageCompositeMasked at the end ensures outside-mask pixels are
 pixel-perfect identical to the input.
@@ -25,7 +26,21 @@ back to using the full prompt for both grounding AND edit — works
 surprisingly often because SAM 3 is forgiving and the model has
 visual conditioning.
 
-Convention (matches region_edit_sam3_qwen_image_2511.json):
+Convention (matches region_edit_sam3_qwen_image_2_1.json):
+  Node "4"  LoadImage               = init image filename
+  Node "30" SAM3Segment             = grounding text → mask
+  Node "31" GrowMask                = soft-edge growth (8 px)
+  Node "25" ImageScaleToTotalPixels = ~1 MP, 32 px grid
+  Node "6"  TextEncodeQwenImage21   = edit_prompt + negative + ref
+  Node "26" SetLatentNoiseMask      = confines denoising to the mask
+  Node "3"  KSampler                = seed
+  Node "23" ImageCompositeMasked    = preserve outside-mask
+  Node "9"  SaveImage
+
+Unlike inpaint, the reference is NOT grey-filled: the instruction edits
+what is there ("make the sofa green"), so the model must see it.
+
+Convention (matches region_edit_sam3_qwen_image_2511.json, legacy):
   Node "4"  LoadImage                    = init image filename
   Node "30" SAM3Segment                  = grounding text → mask
   Node "31" GrowMask                     = soft-edge growth (8 px)
@@ -46,7 +61,7 @@ from protobanana._tracing import trace_span
 from protobanana.client import ComfyUIClient
 from protobanana.workflows.loader import WorkflowLoader
 
-DEFAULT_STEM = "region_edit_sam3_qwen_image_2511"
+DEFAULT_STEM = "region_edit_sam3_qwen_image_2_1"
 
 
 def substitute(
@@ -63,6 +78,8 @@ def substitute(
         workflow["4"]["inputs"]["image"] = image_filename
     if "30" in workflow and workflow["30"].get("class_type") == "SAM3Segment":
         workflow["30"]["inputs"]["prompt"] = grounding_text
+    if "6" in workflow and workflow["6"].get("class_type") == "TextEncodeQwenImage21":
+        workflow["6"]["inputs"]["negative_prompt"] = negative_prompt
     _set_prompt(workflow, "6", edit_prompt)
     _set_prompt(workflow, "7", negative_prompt)
     if "3" in workflow and workflow["3"].get("class_type") == "KSampler":
@@ -76,7 +93,7 @@ def _set_prompt(workflow: dict[str, Any], node_id: str, text: str) -> None:
         return
     node = workflow[node_id]
     ct = node.get("class_type", "")
-    if ct.startswith("TextEncodeQwenImageEdit"):
+    if ct.startswith("TextEncodeQwenImageEdit") or ct == "TextEncodeQwenImage21":
         node["inputs"]["prompt"] = text
     elif ct == "CLIPTextEncode":
         node["inputs"]["text"] = text
