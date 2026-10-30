@@ -54,13 +54,23 @@ class ComfyUIClient:
     # ---- Endpoints ------------------------------------------------------
 
     async def upload_image(self, image_bytes: bytes, filename: str = "init.png") -> str:
-        """POST to /upload/image; returns the stored filename for use in LoadImage."""
-        files = {"image": (filename, image_bytes, "image/png")}
-        data = {"overwrite": "true", "type": "input"}
+        """POST to /upload/image; returns the stored filename for use in LoadImage.
+
+        Every upload gets a per-call unique name. Callers pass fixed names
+        ("init.png", "ref_1.png"), and with overwrite on, two concurrent
+        requests shared one input file: the second upload replaced the first
+        before its LoadImage ran, so one caller's edit rendered another
+        caller's image (a cross-session leak seen under load)."""
+        stem, dot, ext = filename.rpartition(".")
+        if not dot:
+            stem, ext = filename, "png"
+        unique = f"{stem}-{uuid.uuid4().hex}.{ext}"
+        files = {"image": (unique, image_bytes, "image/png")}
+        data = {"overwrite": "false", "type": "input"}
         r = await self.http.post(f"{self._base}/upload/image", files=files, data=data)
         r.raise_for_status()
         body = r.json()
-        return body.get("name", filename)
+        return body.get("name", unique)
 
     async def submit_prompt(self, workflow: dict[str, Any]) -> str:
         """POST workflow JSON to /prompt; returns prompt_id for polling."""
