@@ -5,6 +5,15 @@ SemVer.
 
 ## [Unreleased]
 
+### Fixed — inpaint through the gateway silently did a plain edit
+
+- The LiteLLM proxy (1.83) binds the OpenAI `mask` file field to a named
+  `image_edit` parameter and never forwards it to CustomLLM providers, so
+  every `protolabs/qwen-image-inpaint` request arrived without a mask and
+  fell back to whole-image edit. The provider now also reads the mask from
+  `extra_body.mask_image` (PNG data URL), which survives the gateway; the
+  Gradio Inpaint tab sends it that way. `mask` still works for direct callers.
+
 ### Security — concurrent requests could render each other's images
 
 - `ComfyUIClient.upload_image` now gives every upload a unique input

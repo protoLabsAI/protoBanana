@@ -178,14 +178,21 @@ class ProtoBananaProvider(CustomLLM):
         # up loading the wrong stem.
         workflow_stem = model.split("/", 1)[-1] or edit.DEFAULT_STEM
 
-        # OpenAI's /v1/images/edits accepts a `mask` multipart file in
-        # addition to `image`. LiteLLM forwards it via optional_params
-        # (and possibly **kwargs depending on version). When a mask is
-        # present, route to the inpaint workflow regardless of stem —
-        # mask presence is the strongest signal that the user wants
-        # masked inpainting, not whole-image edit.
+        # The mask arrives one of two ways:
+        #   - `mask` — OpenAI's multipart file field. The LiteLLM proxy
+        #     (1.83) binds it to a named `image_edit` parameter and never
+        #     forwards it to CustomLLM providers, so through the gateway
+        #     it is silently dropped. Still honoured for direct callers.
+        #   - `mask_image` — a data URL in extra_body, the same channel
+        #     as `person_image`. This one survives the gateway.
+        # When a mask is present, route to the inpaint workflow
+        # regardless of stem — mask presence is the strongest signal
+        # that the user wants masked inpainting, not whole-image edit.
         mask_bytes: Optional[bytes] = None
-        raw_mask = opts.get("mask") or _kwargs.get("mask")
+        raw_mask = (
+            opts.get("mask_image") or _kwargs.get("mask_image")
+            or opts.get("mask") or _kwargs.get("mask")
+        )
         if raw_mask is not None:
             try:
                 mask_bytes = self._coerce_image_to_bytes(raw_mask)

@@ -194,7 +194,7 @@ how you configured `model_list`):
 | `protolabs/qwen-image-multiref` | `multiref_qwen_image_2_1` | multiref | Native multi-ref compose (up to 10) |
 | `protolabs/qwen-image-bgremove` | `bgremove_birefnet` | bgremove | Direct sticker (commercial license) |
 | `protolabs/qwen-image-region-edit` | `region_edit_sam3_qwen_image_2_1` | region_edit | SAM-grounded single-object edit |
-| `protolabs/qwen-image-inpaint` | `inpaint_qwen_image_2_1` | inpaint | Masked edit (`mask` in the edits request; transparent = edit) |
+| `protolabs/qwen-image-inpaint` | `inpaint_qwen_image_2_1` | inpaint | Masked edit — send the mask as `extra_body.mask_image` (PNG data URL; transparent = edit, or grayscale white = edit). The `mask` file field is dropped by the gateway |
 | `protolabs/qwen-image-outpaint` | `outpaint_qwen_image_2_1` | outpaint | Canvas extension (`left/top/right/bottom` extras) |
 | `protolabs/krea2-identity-edit` | `krea2_identity_edit[_two_ref]` | krea2_edit | Identity-preserving edit; two-ref auto-selected when `person_image` is passed |
 

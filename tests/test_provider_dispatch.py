@@ -337,3 +337,53 @@ def test_acompletion_gen_without_size_still_infers(provider, monkeypatch):
     ))
     kw = gen_run.await_args.kwargs
     assert (kw["width"], kw["height"]) == (1216, 832)
+
+
+def _patch_inpaint(monkeypatch):
+    edit_run, _bg, _multi = _patch_routes(monkeypatch)
+    inpaint_run = AsyncMock(return_value=b"\x89PNG\r\nfake-output")
+    monkeypatch.setattr("protobanana.provider.inpaint.run", inpaint_run)
+    return edit_run, inpaint_run
+
+
+def test_aimage_edit_mask_image_data_url_routes_to_inpaint(provider, monkeypatch):
+    """extra_body.mask_image is the channel that survives the gateway
+    (LiteLLM drops the multipart `mask` for CustomLLM providers)."""
+    import base64
+    edit_run, inpaint_run = _patch_inpaint(monkeypatch)
+    mask_png = b"\x89PNG\r\nmask"
+    data_url = "data:image/png;base64," + base64.b64encode(mask_png).decode()
+    _run(provider.aimage_edit(
+        model="comfyui-qwen-image/inpaint_qwen_image_2_1",
+        prompt="a fern",
+        image=b"fake-input",
+        optional_params={"mask_image": data_url},
+    ))
+    assert edit_run.await_count == 0
+    assert inpaint_run.await_args.kwargs["mask_bytes"] == mask_png
+    assert inpaint_run.await_args.kwargs["workflow_stem"] == "inpaint_qwen_image_2_1"
+
+
+def test_aimage_edit_mask_image_on_edit_alias_forces_inpaint(provider, monkeypatch):
+    import base64
+    edit_run, inpaint_run = _patch_inpaint(monkeypatch)
+    data_url = "data:image/png;base64," + base64.b64encode(b"m").decode()
+    _run(provider.aimage_edit(
+        model="comfyui-qwen-image/qwen_image_edit_2_1",
+        prompt="a fern",
+        image=b"fake-input",
+        optional_params={"mask_image": data_url},
+    ))
+    assert edit_run.await_count == 0
+    assert inpaint_run.await_args.kwargs["workflow_stem"].startswith("inpaint_")
+
+
+def test_aimage_edit_inpaint_stem_without_mask_falls_back_to_edit(provider, monkeypatch):
+    edit_run, inpaint_run = _patch_inpaint(monkeypatch)
+    _run(provider.aimage_edit(
+        model="comfyui-qwen-image/inpaint_qwen_image_2_1",
+        prompt="a fern",
+        image=b"fake-input",
+    ))
+    assert inpaint_run.await_count == 0
+    assert edit_run.await_count == 1
