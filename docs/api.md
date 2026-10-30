@@ -300,3 +300,93 @@ console.log(chat.choices[0].message.content);
 ### Bash — `curl` (smoke tests)
 
 See [INSTALLATION.md §6](INSTALLATION.md#6-verification).
+
+## Curated catalog — `GET /v1/protobanana/catalog`
+
+Studio clients can discover workflow parameters through the gateway with the
+same bearer they use for image requests. Install protoBanana in the LiteLLM
+proxy environment and launch the package's application factory instead of the
+plain proxy CLI. It reuses LiteLLM's application, startup lifecycle and
+`user_api_key_auth` dependency; it registers only this GET endpoint.
+
+```yaml
+# /app/config.yaml — retain your existing model_list and other settings
+model_list:
+  - model_name: protolabs/qwen-image
+    litellm_params:
+      model: protobanana/qwen_image_2_1
+      api_base: http://your-comfyui-host:8188
+    model_info: {mode: image_generation}
+litellm_settings:
+  custom_provider_map:
+    - {provider: protobanana, custom_handler: protobanana.handler}
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+```
+
+```bash
+pip install 'litellm[proxy]>=1.83' protobanana
+export CONFIG_FILE_PATH=/app/config.yaml
+export PROTOBANANA_WORKFLOWS_DIR=/app/workflows
+export LITELLM_MASTER_KEY=sk-your-gateway-key
+uvicorn protobanana.catalog:create_app --factory --host 0.0.0.0 --port 4000
+
+curl http://your-gateway:4000/v1/protobanana/catalog \
+  -H "Authorization: Bearer $LITELLM_API_KEY"
+```
+
+Configure a master key as for any authenticated LiteLLM deployment. For a
+non-admin virtual key, include `/v1/protobanana/catalog` in the key's
+`allowed_routes`, alongside its existing route grants; LiteLLM applies its
+normal key validation and route permissions. The master bearer also works.
+The factory integration is tested with LiteLLM 1.83.14. No extra listener,
+Enterprise pass-through feature, or raw ComfyUI endpoint is needed.
+
+The response contains `version` (schema version 1), `workflows_hash` (SHA-256
+of sorted filenames and file bytes), and `aliases`. Each entry has `alias`,
+`stem`, `op`, `route` (relative to `/v1`), `params` (JSON Schema), `tier`,
+`inputs`, `licence`, and `typical_latency_s`. Latencies are warm estimates,
+not timeouts or guarantees; draft gen/edit estimates are 9/11 seconds.
+The hash changes on file addition, deletion, rename or content changes,
+including whitespace. Restart the provider after changing workflow files to
+refresh its execution template cache as well.
+
+Entries describe registered workflows present in the provider's workflow
+mount, using the canonical protoLabs aliases above. They are capabilities,
+not a list of models granted to the caller: intersect with gateway model
+availability and map any locally renamed aliases in your client configuration.
+Unknown stems fail catalog construction and workflow validation rather than
+silently inventing an alias. The retired `bgremove_rmbg2` is described only
+when mounted, with `CC-BY-NC-4.0` and `non_commercial: true`.
+Identity realism variants use `protolabs/krea2-identity-edit-realism`;
+single- and two-reference stems share an alias, selected by `person_image`.
+The shipped v1.1 identity weights use the [Krea 2 Community licence](https://huggingface.co/conradlocke/krea2-identity-edit/blob/main/README.md);
+`non_commercial: false` is not a waiver of its commercial-use conditions.
+
+`params` describes logical operation inputs, excluding the routing `model`
+field. Serialize image uploads as multipart fields and extra parameters as
+documented above. Multi-ref has `images` with 2–10 items: serialize these as
+`image_url` parts and `prompt` as a text part in chat `messages`, using the
+chat alias `protolabs/qwen-image-chat`. Direct `/images/edits` still accepts
+only one image even for a multi-ref stem. Identity `inputs.images` counts the
+base image separately from `person_ref`; two-ref entries require
+`person_image`. Only identity omits negative conditioning. A supplied mask
+on **any** edit alias overrides its normal operation to inpaint; transparent
+mask pixels are edited. Without a mask, an inpaint alias retains the existing
+fallback to ordinary edit.
+
+| Operation | Curated parameters beyond `prompt` |
+|---|---|
+| gen | `size`, `width`, `height`, `n` (default 1), `seed`, `negative_prompt`, `response_format=b64_json` |
+| edit | `image`, `n`, `seed`, `negative_prompt` |
+| inpaint | edit parameters plus `mask` (transparent = edit) |
+| region_edit | edit parameters plus `grounding` (otherwise inferred from prompt) |
+| outpaint | edit parameters plus `left/top/right/bottom` (nonnegative pixels; all zero means 256 on each side) |
+| bgremove | `image` only; the Images API transport still requires a prompt |
+| krea2_edit | `image`, `person_image`, `n`, `seed`, `grounding_px` (512–1536, default 768); no negative prompt |
+| multiref | `images` (2–10), `seed`, `negative_prompt` |
+
+The catalog never returns graphs or node IDs and adds no `/object_info`,
+`/prompt`, `/ws`, or `/upload` routes. Check registration offline with
+`python scripts/validate_workflows.py --catalog-only`; the ordinary validator
+still checks the live ComfyUI node schemas after checking catalog coverage.

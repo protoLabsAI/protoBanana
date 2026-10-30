@@ -154,7 +154,9 @@ def find_workflow_files(arg: str | Path) -> list[Path]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = argv or sys.argv[1:]
+    argv = sys.argv[1:] if argv is None else argv
+    catalog_only = "--catalog-only" in argv
+    argv = [arg for arg in argv if arg != "--catalog-only"]
     targets: list[Path] = []
     if argv:
         for a in argv:
@@ -168,6 +170,23 @@ def main(argv: list[str] | None = None) -> int:
     if not targets:
         print("[validator] no workflow JSONs found", file=sys.stderr)
         return 1
+
+    # Support direct execution from a source checkout as well as installation.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from protobanana.catalog import ALIASES
+
+    missing = [path for path in targets if path.stem not in ALIASES]
+    for path in missing:
+        print(f"  ✗ {path.name}: no catalog entry", file=sys.stderr)
+    if missing:
+        return len(missing)
+    if catalog_only:
+        from protobanana.catalog import build_catalog
+
+        for directory in {path.parent for path in targets}:
+            build_catalog(directory)
+        print(f"[validator] {len(targets)} workflows have catalog entries")
+        return 0
 
     print(f"[validator] ComfyUI: {DEFAULT_BASE}")
     print(f"[validator] checking {len(targets)} workflow(s)")

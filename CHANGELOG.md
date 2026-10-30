@@ -5,6 +5,14 @@ SemVer.
 
 ## [Unreleased]
 
+### Added — gateway workflow catalog
+
+- Authenticated `GET /v1/protobanana/catalog` describes curated workflow
+  parameters, input arity, licences, tiers and estimated latency, with a
+  content hash for cache invalidation. Shares stem dispatch with image edits.
+- Workflow validation rejects uncataloged stems; `--catalog-only` runs the
+  catalog check offline. Gateway mounting instructions are in `docs/api.md`.
+
 ### Fixed — inpaint through the gateway silently did a plain edit
 
 - The LiteLLM proxy (1.83) binds the OpenAI `mask` file field to a named

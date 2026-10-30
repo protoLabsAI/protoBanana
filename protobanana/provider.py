@@ -87,6 +87,30 @@ DEFAULT_COMFYUI_BASE = os.environ.get("COMFYUI_BASE_URL", "http://protolabs:8188
 DEFAULT_TIMEOUT_S = float(os.environ.get("COMFYUI_TIMEOUT", "180"))
 
 
+# Ordered prefixes are shared by edit dispatch and the curated catalog.
+_STEM_OPERATIONS = (
+    ("krea2_", "krea2_edit"), ("bgremove_", "bgremove"),
+    ("multiref_", "multiref"), ("region_edit_", "region_edit"),
+    ("outpaint_", "outpaint"), ("inpaint_", "inpaint"),
+    ("qwen_image_edit_", "edit"), ("qwen_image_", "gen"),
+)
+
+
+def dispatch_operation(stem: str, *, mask: bool = False) -> str:
+    """Describe the intended operation; missing-input fallbacks stay in the provider."""
+    if mask:
+        return "inpaint"
+    if stem == "chat":
+        return "chat"
+    return next((op for prefix, op in _STEM_OPERATIONS if stem.startswith(prefix)), "edit")
+
+
+def operation_route(op: str) -> str:
+    if op in {"chat", "multiref"}:
+        return "/chat/completions"
+    return "/images/generations" if op == "gen" else "/images/edits"
+
+
 class ProtoBananaProvider(CustomLLM):
     """Translate OpenAI-shaped requests into ComfyUI workflows."""
 
@@ -214,6 +238,7 @@ class ProtoBananaProvider(CustomLLM):
         # Resolve the dispatched route name up front for the trace.
         # Sticker showing up as "edit" was exactly the kind of mis-
         # routing the new dispatch logic prevents — surface it.
+        route_name = dispatch_operation(workflow_stem, mask=mask_bytes is not None)
         if mask_bytes is not None:
             route_name = "inpaint"
             # If the caller explicitly passed an inpaint stem, honour
@@ -221,7 +246,7 @@ class ProtoBananaProvider(CustomLLM):
             # workflow gets loaded regardless of which alias they hit.
             if not workflow_stem.startswith("inpaint_"):
                 workflow_stem = inpaint.DEFAULT_STEM
-        elif workflow_stem.startswith("krea2_"):
+        elif route_name == "krea2_edit":
             route_name = "krea2_edit"
             # Single-ref and two-ref are separate workflow JSONs (an
             # unconnected optional input can't be expressed in the API
@@ -239,15 +264,15 @@ class ProtoBananaProvider(CustomLLM):
                     "person_image; falling back to single-ref",
                 )
                 workflow_stem = workflow_stem[: -len(krea2_edit.TWO_REF_SUFFIX)]
-        elif workflow_stem.startswith("bgremove_"):
+        elif route_name == "bgremove":
             route_name = "bgremove"
-        elif workflow_stem.startswith("multiref_"):
+        elif route_name == "multiref":
             route_name = "multiref"
-        elif workflow_stem.startswith("region_edit_"):
+        elif route_name == "region_edit":
             route_name = "region_edit"
-        elif workflow_stem.startswith("outpaint_"):
+        elif route_name == "outpaint":
             route_name = "outpaint"
-        elif workflow_stem.startswith("inpaint_"):
+        elif route_name == "inpaint":
             # Inpaint stem requested but no mask supplied — caller bug,
             # but degrade gracefully to plain edit (model still has
             # access to the image via TextEncodeQwenImageEditPlus).

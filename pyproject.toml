@@ -31,6 +31,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "litellm[proxy]>=1.83",
+    "jsonschema>=4",
     "pytest>=8.0",
     "pytest-asyncio>=1.0",
     "ruff>=0.11",
