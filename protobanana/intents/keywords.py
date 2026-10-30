@@ -21,12 +21,12 @@ class Operation(str, Enum):
     EDIT = "edit"           # image + instruction → image
     MULTIREF = "multiref"   # 2+ images (up to 10) + instruction → fused image
     BGREMOVE = "bgremove"   # image → image with alpha (sticker)
-    REGION_EDIT = "region_edit"   # text-target + edit instruction → masked edit (Phase 4)
-    INPAINT = "inpaint"     # image + brushed mask + prompt → fill (Phase 5)
-    OUTPAINT = "outpaint"   # image + extend direction → larger canvas (Phase 6)
+    REGION_EDIT = "region_edit"   # text-target + edit instruction → masked edit
+    INPAINT = "inpaint"     # image + brushed mask + prompt → fill
+    OUTPAINT = "outpaint"   # image + extend direction → larger canvas
 
 
-# ---- Operation keywords (Phase 1-6) -------------------------------------
+# ---- Operation keywords ------------------------------------------------
 
 _BGREMOVE_KEYWORDS = [
     "remove the background", "remove background",

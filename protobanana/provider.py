@@ -619,7 +619,8 @@ class ProtoBananaProvider(CustomLLM):
                     # Only INPAINT lands here: a chat turn carries no mask, so
                     # a keyword-classified inpaint falls back to a plain edit
                     log.warning(
-                        "[protobanana] op=%s not yet implemented; falling back to edit",
+                        "[protobanana] op=%s needs a mask, which chat turns can't carry; "
+                        "falling back to edit",
                         op.value,
                     )
                     parent.update(metadata={"phase4_6_fallback": True})
