@@ -219,11 +219,13 @@ class ProtoBananaProvider(CustomLLM):
         )
         if raw_mask is not None:
             try:
-                mask_bytes = self._coerce_image_to_bytes(raw_mask)
+                mask_bytes = self._coerce_image_to_bytes(raw_mask, allow_path=False)
             except (TypeError, ValueError, OSError):
                 # A mask_image that isn't a valid data URL (http URL, typo,
-                # truncated base64) must not be treated as a server path and
-                # 500 — degrade gracefully to a plain edit instead.
+                # truncated base64, or a filesystem path) must never be read
+                # from the gateway host or 500 — degrade gracefully to a plain
+                # edit instead. allow_path=False makes a bare string raise
+                # rather than be opened as a server path.
                 mask_bytes = None
 
         # Krea2 identity edit optionally takes a second (person) ref.
@@ -234,8 +236,10 @@ class ProtoBananaProvider(CustomLLM):
         raw_person = opts.get("person_image") or _kwargs.get("person_image")
         if raw_person is not None:
             try:
-                person_bytes = self._coerce_image_to_bytes(raw_person)
+                person_bytes = self._coerce_image_to_bytes(raw_person, allow_path=False)
             except (TypeError, ValueError, OSError):
+                # Same guard as mask_image: a client string is a data URL or it
+                # is rejected — never opened as a server filesystem path.
                 person_bytes = None
 
         # Resolve the dispatched route name up front for the trace.
@@ -841,11 +845,13 @@ class ProtoBananaProvider(CustomLLM):
         return latest_user_text, images
 
     @staticmethod
-    def _coerce_image_to_bytes(image: Any) -> bytes:
+    def _coerce_image_to_bytes(image: Any, *, allow_path: bool = True) -> bytes:
         if isinstance(image, bytes):
             return image
         if isinstance(image, list) and image:
-            return ProtoBananaProvider._coerce_image_to_bytes(image[0])
+            return ProtoBananaProvider._coerce_image_to_bytes(
+                image[0], allow_path=allow_path
+            )
         if hasattr(image, "read"):
             data = image.read()
             return data if isinstance(data, bytes) else data.encode("utf-8")
@@ -853,6 +859,15 @@ class ProtoBananaProvider(CustomLLM):
             decoded = _decode_data_url(image)
             if decoded is not None:
                 return decoded
+            if not allow_path:
+                # Client-supplied strings (mask_image, person_image) reach us
+                # only as data URLs through the gateway. A bare string here is
+                # never a legitimate payload, so it must NOT be treated as a
+                # server filesystem path: a path that happens to exist on the
+                # gateway host would otherwise be read and uploaded to ComfyUI,
+                # letting the client choose which server file is used. Reject it
+                # so the caller degrades gracefully instead.
+                raise ValueError("expected a data URL, not a filesystem path")
             return Path(image).read_bytes()
         raise TypeError(f"unsupported image type {type(image).__name__}")
 
