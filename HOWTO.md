@@ -124,11 +124,24 @@ rest of the image is preserved.
 
 ---
 
-## Recipe 6 (Phase 5, queued) — inpaint with brushed mask
+## Recipe 6 — inpaint with a mask
 
-In Open WebUI, brush a mask over an image, then prompt for what to fill.
-The provider sees the explicit mask and routes to INPAINT regardless of
-words.
+In the Gradio Inpaint tab, brush over the region and prompt for what to
+fill. From code, send the mask as a PNG data URL in `extra_body`:
+
+```python
+client.images.edit(
+    model="protolabs/qwen-image-inpaint",
+    image=open("room.png", "rb"),
+    prompt="a potted fern",
+    extra_body={"mask_image": "data:image/png;base64,..."},
+)
+```
+
+Transparent = edit (OpenAI convention); a grayscale mask with white =
+edit also works. Don't use the `mask=` file argument through the
+gateway: LiteLLM drops it, and the request falls back to a plain edit.
+Any mask routes to INPAINT regardless of which edit alias was called.
 
 ---
 

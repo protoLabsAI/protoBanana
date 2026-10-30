@@ -102,10 +102,10 @@ running entirely on local GPUs through your own LiteLLM gateway.
 | Chained operations in one chat turn | ✓ | ✓ (agent calls tools in sequence) |
 | Text-to-image | ✓ | ✓ |
 | Single-image instruction edit | ✓ | ✓ |
-| Multi-reference compose | up to 14 refs | up to **3** (Qwen-Image-Edit cap) |
+| Multi-reference compose | up to 14 refs | up to **10** (Qwen-Image-2.1, native) |
 | Background removal / sticker | ✓ | ✓ |
 | Text-region edit (`"change the man's tie"`) | ✓ | ✓ (SAM 3 text→mask) |
-| Inpaint with provided mask | ✓ | ✓ (`/v1/images/edits` + mask) |
+| Inpaint with provided mask | ✓ | ✓ (`/v1/images/edits` + `extra_body.mask_image`) |
 | Outpaint | ✓ | ✓ (`"extend left"`, `"make this wider"`) |
 | Hosted | yes | **no** — all local |
 | Cost per image | metered | electricity |

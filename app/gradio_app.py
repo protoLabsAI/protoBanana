@@ -710,19 +710,17 @@ def fn_inpaint(
     img_buf = io.BytesIO()
     init_image.save(img_buf, format="PNG")
     img_buf.seek(0)
-    mask_buf = io.BytesIO()
-    mask_image.save(mask_buf, format="PNG")
-    mask_buf.seek(0)
-    extra: dict[str, Any] = {}
+    # The mask rides extra_body as a data URL: the gateway drops the
+    # OpenAI `mask` file field before it reaches the provider.
+    extra: dict[str, Any] = {"mask_image": _pil_to_data_url(mask_image)}
     if (s := _seed_int(seed)) is not None:
         extra["seed"] = s
     resp = client.images.edit(
         model=model,
         prompt=prompt,
         image=img_buf,
-        mask=mask_buf,
         response_format="b64_json",
-        extra_body=extra or None,
+        extra_body=extra,
     )
     img = _bytes_to_pil(_b64_to_bytes(resp.data[0].b64_json))
     info = f"**model**: `{model}`  ·  **wall**: `{time.time() - t0:.1f}s`"
