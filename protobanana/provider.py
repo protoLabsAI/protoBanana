@@ -87,6 +87,30 @@ DEFAULT_COMFYUI_BASE = os.environ.get("COMFYUI_BASE_URL", "http://protolabs:8188
 DEFAULT_TIMEOUT_S = float(os.environ.get("COMFYUI_TIMEOUT", "180"))
 
 
+# Ordered prefixes are shared by edit dispatch and the curated catalog.
+_STEM_OPERATIONS = (
+    ("krea2_", "krea2_edit"), ("bgremove_", "bgremove"),
+    ("multiref_", "multiref"), ("region_edit_", "region_edit"),
+    ("outpaint_", "outpaint"), ("inpaint_", "inpaint"),
+    ("qwen_image_edit_", "edit"), ("qwen_image_", "gen"),
+)
+
+
+def dispatch_operation(stem: str, *, mask: bool = False) -> str:
+    """Describe the intended operation; missing-input fallbacks stay in the provider."""
+    if mask:
+        return "inpaint"
+    if stem == "chat":
+        return "chat"
+    return next((op for prefix, op in _STEM_OPERATIONS if stem.startswith(prefix)), "edit")
+
+
+def operation_route(op: str) -> str:
+    if op in {"chat", "multiref"}:
+        return "/chat/completions"
+    return "/images/generations" if op == "gen" else "/images/edits"
+
+
 class ProtoBananaProvider(CustomLLM):
     """Translate OpenAI-shaped requests into ComfyUI workflows."""
 
@@ -195,8 +219,13 @@ class ProtoBananaProvider(CustomLLM):
         )
         if raw_mask is not None:
             try:
-                mask_bytes = self._coerce_image_to_bytes(raw_mask)
-            except (TypeError, ValueError):
+                mask_bytes = self._coerce_image_to_bytes(raw_mask, allow_path=False)
+            except (TypeError, ValueError, OSError):
+                # A mask_image that isn't a valid data URL (http URL, typo,
+                # truncated base64, or a filesystem path) must never be read
+                # from the gateway host or 500 — degrade gracefully to a plain
+                # edit instead. allow_path=False makes a bare string raise
+                # rather than be opened as a server path.
                 mask_bytes = None
 
         # Krea2 identity edit optionally takes a second (person) ref.
@@ -207,13 +236,16 @@ class ProtoBananaProvider(CustomLLM):
         raw_person = opts.get("person_image") or _kwargs.get("person_image")
         if raw_person is not None:
             try:
-                person_bytes = self._coerce_image_to_bytes(raw_person)
-            except (TypeError, ValueError):
+                person_bytes = self._coerce_image_to_bytes(raw_person, allow_path=False)
+            except (TypeError, ValueError, OSError):
+                # Same guard as mask_image: a client string is a data URL or it
+                # is rejected — never opened as a server filesystem path.
                 person_bytes = None
 
         # Resolve the dispatched route name up front for the trace.
         # Sticker showing up as "edit" was exactly the kind of mis-
         # routing the new dispatch logic prevents — surface it.
+        route_name = dispatch_operation(workflow_stem, mask=mask_bytes is not None)
         if mask_bytes is not None:
             route_name = "inpaint"
             # If the caller explicitly passed an inpaint stem, honour
@@ -221,7 +253,7 @@ class ProtoBananaProvider(CustomLLM):
             # workflow gets loaded regardless of which alias they hit.
             if not workflow_stem.startswith("inpaint_"):
                 workflow_stem = inpaint.DEFAULT_STEM
-        elif workflow_stem.startswith("krea2_"):
+        elif route_name == "krea2_edit":
             route_name = "krea2_edit"
             # Single-ref and two-ref are separate workflow JSONs (an
             # unconnected optional input can't be expressed in the API
@@ -239,15 +271,15 @@ class ProtoBananaProvider(CustomLLM):
                     "person_image; falling back to single-ref",
                 )
                 workflow_stem = workflow_stem[: -len(krea2_edit.TWO_REF_SUFFIX)]
-        elif workflow_stem.startswith("bgremove_"):
+        elif route_name == "bgremove":
             route_name = "bgremove"
-        elif workflow_stem.startswith("multiref_"):
+        elif route_name == "multiref":
             route_name = "multiref"
-        elif workflow_stem.startswith("region_edit_"):
+        elif route_name == "region_edit":
             route_name = "region_edit"
-        elif workflow_stem.startswith("outpaint_"):
+        elif route_name == "outpaint":
             route_name = "outpaint"
-        elif workflow_stem.startswith("inpaint_"):
+        elif route_name == "inpaint":
             # Inpaint stem requested but no mask supplied — caller bug,
             # but degrade gracefully to plain edit (model still has
             # access to the image via TextEncodeQwenImageEditPlus).
@@ -561,6 +593,7 @@ class ProtoBananaProvider(CustomLLM):
                         self._loader,
                         prompt=prompt,
                         init_image_bytes_list=init_images,
+                        negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
                         seed=opts.get("seed"),
                         timeout_s=max(timeout_s, 240.0),
                     )
@@ -760,13 +793,15 @@ class ProtoBananaProvider(CustomLLM):
         Image collection rules:
           - User attachments (multimodal `image_url` parts) → all of them in
             order (newest first)
-          - Prior assistant images (markdown data URLs we serialized) → the
-            most recent one (next round's edit init)
-          - Stop after MAX images collected (3; the 2.1 multiref route takes up to 10)
+          - Prior assistant images (markdown data URLs we serialized) →
+            newest first, as init refs once the newer user turns are exhausted
+          - Stop after multiref.MAX_REFS images collected, matching the
+            catalog's multiref arity so every reference the catalog accepts
+            reaches the route (older history beyond the cap is ignored)
         """
         latest_user_text: str = ""
         images: list[bytes] = []
-        max_images = 3
+        max_images = multiref.MAX_REFS
 
         for msg in reversed(messages):
             role = msg.get("role")
@@ -810,11 +845,13 @@ class ProtoBananaProvider(CustomLLM):
         return latest_user_text, images
 
     @staticmethod
-    def _coerce_image_to_bytes(image: Any) -> bytes:
+    def _coerce_image_to_bytes(image: Any, *, allow_path: bool = True) -> bytes:
         if isinstance(image, bytes):
             return image
         if isinstance(image, list) and image:
-            return ProtoBananaProvider._coerce_image_to_bytes(image[0])
+            return ProtoBananaProvider._coerce_image_to_bytes(
+                image[0], allow_path=allow_path
+            )
         if hasattr(image, "read"):
             data = image.read()
             return data if isinstance(data, bytes) else data.encode("utf-8")
@@ -822,6 +859,15 @@ class ProtoBananaProvider(CustomLLM):
             decoded = _decode_data_url(image)
             if decoded is not None:
                 return decoded
+            if not allow_path:
+                # Client-supplied strings (mask_image, person_image) reach us
+                # only as data URLs through the gateway. A bare string here is
+                # never a legitimate payload, so it must NOT be treated as a
+                # server filesystem path: a path that happens to exist on the
+                # gateway host would otherwise be read and uploaded to ComfyUI,
+                # letting the client choose which server file is used. Reject it
+                # so the caller degrades gracefully instead.
+                raise ValueError("expected a data URL, not a filesystem path")
             return Path(image).read_bytes()
         raise TypeError(f"unsupported image type {type(image).__name__}")
 

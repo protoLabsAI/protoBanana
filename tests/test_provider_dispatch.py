@@ -9,11 +9,9 @@ stem name. The fix is dispatch-by-prefix; this test locks it.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from litellm.types.utils import ImageResponse
 
 from protobanana.provider import ProtoBananaProvider
 
@@ -387,3 +385,80 @@ def test_aimage_edit_inpaint_stem_without_mask_falls_back_to_edit(provider, monk
     ))
     assert inpaint_run.await_count == 0
     assert edit_run.await_count == 1
+
+
+# ---- client-supplied path must never be read off the gateway host ----------
+#
+# mask_image / person_image arrive as raw strings in extra_body, fully under
+# client control. A non-data-URL string must be rejected, NOT opened as a
+# server filesystem path — otherwise a client could name a file that happens
+# to exist on the gateway host and have it read and uploaded to ComfyUI.
+
+def test_aimage_edit_mask_image_filesystem_path_is_not_read(provider, monkeypatch, tmp_path):
+    """A mask_image naming a real file on the gateway host is rejected: the
+    request degrades to a plain edit, and the file's contents are never used
+    as the mask."""
+    edit_run, inpaint_run = _patch_inpaint(monkeypatch)
+    secret = tmp_path / "secret.png"
+    secret.write_bytes(b"\x89PNG\r\nserver-side-secret")
+    _run(provider.aimage_edit(
+        model="comfyui-qwen-image/inpaint_qwen_image_2_1",
+        prompt="a fern",
+        image=b"fake-input",
+        optional_params={"mask_image": str(secret)},
+    ))
+    # No mask was accepted -> no inpaint route, falls back to plain edit.
+    assert inpaint_run.await_count == 0
+    assert edit_run.await_count == 1
+
+
+def test_aimage_edit_mask_image_existing_path_via_extra_kwargs_not_read(
+    provider, monkeypatch, tmp_path
+):
+    """Same guard when mask_image arrives via **_kwargs rather than
+    optional_params."""
+    edit_run, inpaint_run = _patch_inpaint(monkeypatch)
+    secret = tmp_path / "etc_passwd_lookalike"
+    secret.write_bytes(b"root:x:0:0:")
+    _run(provider.aimage_edit(
+        model="comfyui-qwen-image/qwen_image_edit_2_1",
+        prompt="a fern",
+        image=b"fake-input",
+        mask_image=str(secret),
+    ))
+    assert inpaint_run.await_count == 0
+    assert edit_run.await_count == 1
+
+
+def test_aimage_edit_person_image_filesystem_path_is_not_read(
+    provider, monkeypatch, tmp_path
+):
+    """A person_image naming a real file on the gateway host is rejected: the
+    krea2 edit stays single-ref and the file is never forwarded as a ref."""
+    edit_run, krea2_run = _patch_krea2(monkeypatch)
+    secret = tmp_path / "person.png"
+    secret.write_bytes(b"\x89PNG\r\nserver-side-secret")
+    _run(provider.aimage_edit(
+        model="protolabs/krea2_identity_edit",
+        prompt="place the person on the bench",
+        image=b"fake-scene",
+        optional_params={"person_image": str(secret)},
+    ))
+    assert krea2_run.await_count == 1
+    kwargs = krea2_run.await_args.kwargs
+    # Path was NOT read: no person ref, single-ref stem retained.
+    assert kwargs["person_image_bytes"] is None
+    assert kwargs["workflow_stem"] == "krea2_identity_edit"
+
+
+def test_coerce_image_to_bytes_allow_path_false_rejects_path(tmp_path):
+    """Method-level contract: with allow_path=False a filesystem path string is
+    rejected with ValueError instead of being read, even when it exists."""
+    secret = tmp_path / "secret.bin"
+    secret.write_bytes(b"server-side-secret")
+    with pytest.raises(ValueError):
+        ProtoBananaProvider._coerce_image_to_bytes(str(secret), allow_path=False)
+    # A data URL is still accepted on the same locked-down path.
+    import base64
+    data_url = "data:image/png;base64," + base64.b64encode(b"ok").decode()
+    assert ProtoBananaProvider._coerce_image_to_bytes(data_url, allow_path=False) == b"ok"

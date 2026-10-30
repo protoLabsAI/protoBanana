@@ -5,6 +5,16 @@ SemVer.
 
 ## [Unreleased]
 
+### Added — gateway workflow catalog
+
+- Authenticated `GET /v1/protobanana/catalog` describes curated workflow
+  parameters, input arity, licences, tiers and estimated latency, with a
+  content hash for cache invalidation. Shares stem dispatch with image edits.
+- Chat reference extraction now shares the multiref route’s ten-image limit,
+  so all references accepted by the catalog reach the route.
+- Workflow validation rejects uncataloged stems; `--catalog-only` runs the
+  catalog check offline. Gateway mounting instructions are in `docs/api.md`.
+
 ### Fixed — inpaint through the gateway silently did a plain edit
 
 - The LiteLLM proxy (1.83) binds the OpenAI `mask` file field to a named
@@ -12,7 +22,9 @@ SemVer.
   every `protolabs/qwen-image-inpaint` request arrived without a mask and
   fell back to whole-image edit. The provider now also reads the mask from
   `extra_body.mask_image` (PNG data URL), which survives the gateway; the
-  Gradio Inpaint tab sends it that way. `mask` still works for direct callers.
+  Gradio Inpaint tab sends it that way. The catalog's inpaint schema publishes
+  `mask_image` (not `mask`) so schema-following clients send the field that
+  works. `mask` still works for direct callers.
 
 ### Security — concurrent requests could render each other's images
 
