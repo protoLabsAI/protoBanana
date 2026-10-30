@@ -5,6 +5,14 @@ SemVer.
 
 ## [Unreleased]
 
+### Added — read-only workflow inspector
+
+- Authenticated `GET /v1/protobanana/workflows/{alias}` returns curated local
+  workflow JSON with `_doc`, the resolved stem, catalog hash and substitution
+  slots for Studio highlighting. Supports exact stems for shared-alias variants;
+  unknown aliases return 404. No ComfyUI requests or execution routes are added.
+  Refs protoLabsAI/protobanana-plugin#16 (backend half).
+
 ### Added — gateway workflow catalog
 
 - Authenticated `GET /v1/protobanana/catalog` describes curated workflow

@@ -307,7 +307,7 @@ Studio clients can discover workflow parameters through the gateway with the
 same bearer they use for image requests. Install protoBanana in the LiteLLM
 proxy environment and launch the package's application factory instead of the
 plain proxy CLI. It reuses LiteLLM's application, startup lifecycle and
-`user_api_key_auth` dependency; it registers only this GET endpoint.
+`user_api_key_auth` dependency; it registers the catalog and workflow inspection GET endpoints.
 
 ```yaml
 # /app/config.yaml — retain your existing model_list and other settings
@@ -393,3 +393,45 @@ The catalog never returns graphs or node IDs and adds no `/object_info`,
 `/prompt`, `/ws`, or `/upload` routes. Check registration offline with
 `python scripts/validate_workflows.py --catalog-only`; the ordinary validator
 still checks the live ComfyUI node schemas after checking catalog coverage.
+
+## Workflow inspector — `GET /v1/protobanana/workflows/{alias}`
+
+Use the same application factory and gateway bearer described above. This
+read-only endpoint returns a curated API-format graph for Studio inspection:
+
+```bash
+curl http://your-gateway:4000/v1/protobanana/workflows/protolabs/qwen-image \
+  -H "Authorization: Bearer $LITELLM_API_KEY"
+```
+
+`alias` accepts a canonical catalog alias (including its `protolabs/` prefix)
+or an exact catalog `stem`. Shared identity aliases select the single-reference
+workflow; use the exact `_two_ref` stem to inspect the two-reference variant.
+Locally renamed gateway aliases must be mapped to catalog stems by the client,
+as with the catalog. The chat auto-router has no single graph and returns 404.
+Unknown aliases, unregistered stems and unavailable variants return HTTP 404
+with `{"detail": "Unknown workflow alias: ..."}`.
+
+The response has four fields:
+
+- `workflow`: API-format node dictionary, with the file's `_doc` retained
+  (an empty object when the file has no `_doc`).
+- `stem`: the resolved workflow filename without `.json`.
+- `workflows_hash`: the same directory content hash as the catalog.
+- `slots`: an array of `{"node_id": "6", "input": "prompt"}` targets patched
+  by the operation's `substitute()`. These describe possible substitutions,
+  including optional parameters, rather than the values for a particular request.
+  Multi-ref slots include up to ten references; `dynamic: true` marks inputs or
+  nodes created at runtime (extra LoadImage nodes clone node `100`).
+
+For Qwen-Image-2.1 generation, slots cover node `6`'s `prompt` and
+`negative_prompt`, node `5`'s `width`/`height`, and node `3`'s `seed`.
+Older CLIPTextEncode-pair templates instead use nodes `6` and `7`'s `text`.
+`_doc` is inspection metadata and is still stripped for image execution.
+
+For non-admin virtual keys, grant the requested workflow URL in `allowed_routes`
+using the gateway's route permissions, alongside existing catalog/image grants.
+The graph describes a capability, not a model availability grant. Files come
+from the same local workflow directory as the catalog and execution loader
+(`PROTOBANANA_WORKFLOWS_DIR`, default `/app/workflows`). Inspection never calls
+ComfyUI and adds no `/prompt`, `/ws`, `/upload`, or `/object_info` passthrough.
