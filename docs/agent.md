@@ -43,7 +43,7 @@ The LLM sees text only — never image bytes. Server-side state tracks "the most
 | `edit_image(instruction)` | Whole-image transformation of the most recent image |
 | `region_edit(region, edit_prompt)` | Change a NAMED sub-region (e.g. "the man's tie") |
 | `remove_background()` | Sticker / alpha PNG of the most recent image |
-| `multi_ref_compose(prompt)` | Blend 2-3 reference images |
+| `multi_ref_compose(prompt)` | Blend 2-3 reference images (passes the first 3; the `-multiref` alias takes up to 10) |
 | `outpaint(left/top/right/bottom, fill_prompt)` | Extend the canvas |
 
 The full JSON schema for each tool lives in `protobanana/tools.py` — that's the source of truth the LLM reads at routing time.

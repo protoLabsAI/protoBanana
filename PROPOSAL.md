@@ -8,6 +8,9 @@
 **Status:** alpha — Phase 1-3 implemented (gen + edit + multi-ref + bg-remove);
 Phases 4-7 specced and queued. See [PHASES.md](PHASES.md).
 
+> _Superseded status (2026-10): all seven phases shipped, on Qwen-Image-2.1
+> — see [PHASES.md](PHASES.md). This document is the original May 2026 proposal._
+
 **Author:** protoLabsAI, May 2026.
 
 **Targets:**

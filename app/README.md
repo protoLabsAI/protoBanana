@@ -1,14 +1,17 @@
 # app/ — Gradio UI for protoBanana
 
 A thin OpenAI-client UI that exercises every operation kind through the
-protoBanana gateway. Five tabs:
+protoBanana gateway. Eight tabs:
 
 | Tab | What it tests |
 |---|---|
 | 🎨 **Generate** | `/v1/images/generations` → `protolabs/qwen-image` |
 | ✏️ **Edit** | `/v1/images/edits` → `protolabs/qwen-image-edit` |
-| 🔀 **Multi-ref** | 2-3 reference images via `/v1/chat/completions` → `protolabs/qwen-image-chat` |
+| 🔀 **Multi-ref** | 2-3 reference images via `/v1/chat/completions` → `protolabs/qwen-image-multiref` |
 | 🪄 **Sticker / BG remove** | `/v1/images/edits` → `protolabs/qwen-image-bgremove` |
+| 🎯 **Region edit** | `/v1/images/edits` + `extra_body.grounding` (SAM 3 text→mask) → `protolabs/qwen-image-region-edit` |
+| 🖼️ **Outpaint** | `/v1/images/edits` + per-side pixel margins → `protolabs/qwen-image-outpaint` |
+| 🩹 **Inpaint** | Brushed mask sent as `extra_body.mask_image` via `/v1/images/edits` → `protolabs/qwen-image-inpaint` |
 | 💬 **Chat** | Full multi-turn auto-routing via `/v1/chat/completions` → `protolabs/qwen-image-chat` |
 
 The Chat tab is the most fun — it's the actual nano-banana experience.
@@ -49,6 +52,13 @@ override per-session:
 | `PROTOBANANA_MODEL_EDIT` | `protolabs/qwen-image-edit` | Edit alias |
 | `PROTOBANANA_MODEL_CHAT` | `protolabs/qwen-image-chat` | Chat alias |
 | `PROTOBANANA_MODEL_BGREMOVE` | `protolabs/qwen-image-bgremove` | BG-remove alias |
+| `PROTOBANANA_MODEL_REGION_EDIT` | `protolabs/qwen-image-region-edit` | Region-edit alias |
+| `PROTOBANANA_MODEL_MULTIREF` | `protolabs/qwen-image-multiref` | Multi-ref alias |
+| `PROTOBANANA_MODEL_OUTPAINT` | `protolabs/qwen-image-outpaint` | Outpaint alias |
+| `PROTOBANANA_MODEL_INPAINT` | `protolabs/qwen-image-inpaint` | Inpaint alias |
+| `PROTOBANANA_GATEWAY_URL_HIDDEN` | (unset) | `1` hides the Gateway URL field (hosted deploys pin it via env) |
+| `PROTOBANANA_DISABLE_TABS` | (unset) | Comma-separated tab IDs to replace with a "disabled" notice. Only `multiref` is wired today |
+| `PROTOBANANA_DISABLE_TABS_NOTE` | generic message | Text shown in place of a disabled tab |
 
 If your gateway exposes the protobanana models under different aliases
 (or you're testing alongside `protolabs/nano-banana-2`), change them in
@@ -69,14 +79,12 @@ gateway, not on Spaces' compute. Users enter their gateway URL + API key
 
 ## Limitations
 
-- **The Multi-ref tab is hard-capped at 3 images** (Qwen-Image-Edit-2511
-  ceiling). The 4th upload slot doesn't exist.
+- **The Multi-ref tab has 3 upload slots.** A UI limit only — the API
+  (and the Chat tab's history walk) accept up to 10 references.
 - **Chat history isn't persisted across reloads.** Refresh = clean slate.
   Persistence would mean DB integration; out of scope for a test/eval UI.
 - **No streaming.** Each generation is a single round-trip to the gateway,
   buffered until ready.
-- **No mask brushing yet.** Phase 5 will add inpaint with a brushed mask;
-  Gradio's `gr.ImageEditor` (or sketchpad) is the natural surface for it.
 
 ---
 

@@ -38,9 +38,10 @@ with chat + voice services):
 | **Subtotal** | **63.9 GB** | |
 | **Free** | **33.1 GB** | Available for ComfyUI peak |
 
-ComfyUI peaks at ~30 GB during a generation, leaving ~3 GB safety margin.
-**Verified end-to-end**: 1024×1024 20-step Qwen-Image generation completed
-in ~28s; nvidia-smi peak 91.5 GB / 96 GB.
+ComfyUI peaks at ~22 GB during a Qwen-Image-2.1 generation (bf16 DiT +
+int8 text encoder), leaving ~11 GB safety margin. (Measured on the
+previous ~30 GB Qwen-Image-2512 stack: 1024×1024 20-step gen in ~28s,
+nvidia-smi peak 91.5 GB / 96 GB.)
 
 ### What to do if you OOM
 
@@ -55,8 +56,9 @@ In order of preference:
    `0.73` → `0.42` frees ~30 GB. Trade: smaller KV cache budget.
 4. **Pin ComfyUI to a different GPU** via `CUDA_VISIBLE_DEVICES=N` in the
    systemd unit.
-5. **Use GGUF Q4 model variants** (~10 GB instead of 20 GB peak per UNet).
-   Trade: small quality regression on text-heavy prompts.
+5. **Use a quantized DiT** (e.g. the `int8_convrot` variant in the
+   Comfy-Org Qwen-Image-2.1 repo). Trade: ~2.3x slower on Ampere, and
+   possible quality regression on text-heavy prompts.
 
 ---
 
@@ -65,8 +67,8 @@ In order of preference:
 ComfyUI doesn't pre-load all models. The first request that uses a given
 UNet pays a load cost from disk:
 
-| Cold load | Warm |
-|---|---|
+| Path | Cold load | Warm |
+|---|---|---|
 | Qwen-Image-2.1 first gen | not yet measured | ~31s total (~9s turbo) |
 | Qwen-Image-2.1 first edit | not yet measured | ~38s total (~10-12s turbo) |
 | SAM 3 first region edit | not yet measured | ~65s total (incl. SAM 3) |
@@ -102,7 +104,8 @@ text leaked through. Either:
   misconfigured (switch to `=openai` pointing at the gateway)
 - The provider's `substitute()` for that route doesn't recognize the
   workflow's text node by `class_type` — verify the workflow uses
-  `CLIPTextEncode` for nodes 6/7
+  `TextEncodeQwenImage21` for node 6 (or a `CLIPTextEncode` pair on
+  nodes 6/7 for custom templates)
 
 ### Symptom: chat returns "I'm sorry, I can't generate images" or hallucinated error text
 

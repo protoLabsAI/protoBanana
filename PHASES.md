@@ -3,6 +3,13 @@
 > Each phase = one new operation. Adding a phase = one route module + one
 > workflow JSON + one keyword set + one Operation enum value. See
 > [PROPOSAL.md §3.5](PROPOSAL.md#35-extension-model) for the cost model.
+>
+> **Current state (2026-10):** all seven phases have shipped, and every Qwen
+> operation now runs on **Qwen-Image-2.1** (+ 2.1 Turbo, 8 steps cfg 1;
+> ComfyUI >= 0.37). Background removal is BiRefNet; region edit grounds
+> with SAM 3. The earlier Qwen-Image-2512 / Qwen-Image-Edit-2511 / RMBG-2.0
+> workflows were retired in #49 — see [CHANGELOG.md](CHANGELOG.md) and
+> [JOURNEY.md](JOURNEY.md) for that history.
 
 ## Status legend
 
@@ -18,13 +25,14 @@
 
 **Operation:** `GEN`, `EDIT` (auto-routes via chat-completions)
 
-**Workflows:** `qwen_image_2512.json`, `qwen_image_edit_2511.json`
+**Workflows:** `qwen_image_2_1.json`, `qwen_image_edit_2_1.json`, plus the
+8-step draft tier `qwen_image_2_1_turbo.json` / `qwen_image_edit_2_1_turbo.json`
+(originally shipped on `qwen_image_2512` / `qwen_image_edit_2511`, since retired)
 
-**Models:**
-- `Comfy-Org/Qwen-Image_ComfyUI/split_files/diffusion_models/qwen_image_2512_fp8_e4m3fn.safetensors` (~20 GB)
-- `Comfy-Org/Qwen-Image-Edit_ComfyUI/split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors` (~21 GB)
-- Shared text encoder: `qwen_2.5_vl_7b_fp8_scaled.safetensors` (~8.8 GB)
-- Shared VAE: `qwen_image_vae.safetensors` (~243 MB)
+**Models** (`Comfy-Org/Qwen-Image-2.1`, one unified gen+edit model):
+- `diffusion_models/qwen_image_2.1_bf16.safetensors` (+ `qwen_image_2.1_turbo_bf16.safetensors`)
+- Text encoder: `text_encoders/qwen3vl_8b_int8_convrot.safetensors`
+- VAE: `vae/qwen_image_2.1_vae_bf16.safetensors`
 
 **Acceptance:**
 - ✅ `/v1/images/generations` returns base64 image
@@ -44,139 +52,130 @@
 **Operation:** `BGREMOVE`
 
 **Workflows:**
-- `bgremove_birefnet.json` — default, **commercial-safe** (BiRefNet, ~85% quality vs SOTA)
-- `bgremove_rmbg2.json` — opt-in, **non-commercial only** (RMBG-2.0, ~90% quality, CC BY-NC 4.0)
+- `bgremove_birefnet.json` — **commercial-safe** (BiRefNet, MIT, ~85% quality vs SOTA)
+- (The opt-in non-commercial `bgremove_rmbg2.json` — RMBG-2.0, CC BY-NC 4.0 — was retired in #49.)
 
 **Models** (auto-downloaded by ComfyUI-RMBG node pack on first use):
 - BiRefNet-general (~440 MB)
-- RMBG-2.0 (~177 MB) — only if used
 
-**Custom node dependency:** [`ComfyUI-RMBG`](https://github.com/1038lab/ComfyUI-RMBG) (1038lab, GPL-3.0). Bundles BiRefNet, RMBG-2.0, BEN/BEN2, INSPYRENET, SDMatte, SAM/SAM2/SAM3, GroundingDINO under one install — also lights up Phase 4 deps.
+**Custom node dependency:** [`ComfyUI-RMBG`](https://github.com/1038lab/ComfyUI-RMBG) (1038lab, GPL-3.0). Bundles BiRefNet, BEN/BEN2, INSPYRENET, SDMatte, SAM/SAM2/SAM3, GroundingDINO under one install — also provides the SAM 3 node Phase 4 uses.
 
 **Intent triggers:** `"remove background"`, `"transparent png"`, `"as a sticker"`, `"alpha background"`, `"knock out the background"`, etc. (See [intents/keywords.py](protobanana/intents/keywords.py))
 
 **Acceptance:**
 - ✅ Init image + bg-remove keyword in chat → transparent PNG output
 - ✅ No init image → falls back to GEN (we don't generate stickers from text alone in v1)
-- ✅ Workflow ships as both BiRefNet (default) and RMBG-2.0 (opt-in)
+- ✅ Workflow ships on BiRefNet (commercial-safe)
 - ✅ Intent classifier tests cover all keywords
 
 ---
 
-## ✅ Phase 3 — Multi-reference (2-3 images)
+## ✅ Phase 3 — Multi-reference (2-10 images)
 
 **Operation:** `MULTIREF`
 
-**Workflow:** `multiref_qwen_image_2511.json`
+**Workflow:** `multiref_qwen_image_2_1.json` (originally `multiref_qwen_image_2511`, which needed a grid-stitch workaround; retired)
 
-**Model:** Qwen-Image-Edit-2511 (already loaded for Phase 1).
+**Model:** Qwen-Image-2.1 (already loaded for Phase 1) — takes references natively.
 
 **Acceptance:**
 - ✅ Provider walks ENTIRE chat history collecting images (not just latest)
-- ✅ Hard cap at 3 (Qwen-Image-Edit-2511 ceiling)
+- ✅ Cap at 10 (`MAX_REFS` in `routes/multiref.py`)
 - ✅ ≥2 images present → routes to MULTIREF, not single EDIT
-- ✅ Workflow uses parallel LoadImage → ImageScale → VAEEncode chains, conditioning-stacked
+- ✅ Workflow clones `LoadImage` node 100 per reference into node 6's `images.image_N` slots
 - ✅ Tests verify image collection order and cap
 
-**Limitation:** Qwen-Image-Edit-2511 maxes at 3 reference images. Nano-banana
-2 supports 14. We don't compete on this axis until Qwen ships a higher-ref
-variant; recommend cloud-fallback for >3-ref tasks.
+**Limitation:** 10 references vs Nano-banana 2's 14. The chat agent's
+`multi_ref_compose` tool still passes only the first 3; address
+`protolabs/qwen-image-multiref` directly for more.
 
 ---
 
-## 📋 Phase 4 — Region edit by text (Florence-2 + SAM 2.1)
+## ✅ Phase 4 — Region edit by text (SAM 3)
 
 **Operation:** `REGION_EDIT`
 
 **The killer feature.** User says `"change the man's tie to red"` —
-Florence-2 finds the bounding box from the text, SAM 2.1 generates a
-pixel-precise mask, Qwen-Image-Edit inpaints just that region.
+SAM 3 turns the text target into a pixel mask, Qwen-Image-2.1 repaints
+just that region, and the result is composited back so the rest of the
+image is preserved.
 
-**Workflows:**
-- `region_edit_florence2_sam2_qwen.json` — single-shot text-grounded edit
+**Workflow:** `region_edit_sam3_qwen_image_2_1.json`
 
-**Models** (added on top of Phase 1+2):
-- `microsoft/Florence-2-large` (~770 MB) — text → bounding box
-- `facebook/sam2-hiera-base+` or smaller (~150 MB-2.6 GB) — bbox → mask
+**Models** (added on top of Phase 1+2): SAM 3, auto-downloaded by ComfyUI-RMBG (`SAM3Segment` node).
 
-**Custom node:** [`ComfyUI-RMBG`](https://github.com/1038lab/ComfyUI-RMBG) already includes Florence-2-SAM2 nodes (one install, multiple capabilities).
-
-**Intent triggers** (already in keyword classifier):
+**Intent triggers** (keyword classifier):
 - `"change the X to Y"`, `"change her X"`, `"change his X"`
 - `"replace the X"`, `"replace her X"`
 - `"just the X"`, `"only the X"`
 
-**VRAM impact:** Florence-2 + SAM 2.1 base together ~3 GB peak when invoked.
-ComfyUI's smart memory swaps in/out, so peak per-request stays ~30 GB.
+Direct callers pass the target as `extra_body.grounding`; on the chat path
+the prompt is split into grounding text + edit prompt.
 
-**Acceptance criteria:**
-- [ ] `region_edit_florence2_sam2_qwen.json` workflow ships
-- [ ] Provider routes correctly: prompt has sub-object pattern + has init image → REGION_EDIT
-- [ ] Mask quality verified: 5 hand-crafted "change the X" prompts produce visibly correct masks (eyeball-tested)
-- [ ] Edit fidelity: edited region looks like the request, surrounding pixels unchanged
-- [ ] Latency: ≤ 60s per region edit on cold model (≤ 20s warm)
-- [ ] Tests: 6 new region-edit cases in `test_intents_keywords.py`, integration test against ComfyUI in `tests/integration/`
+**Acceptance:**
+- ✅ Workflow ships
+- ✅ Provider routes: sub-object pattern + init image → REGION_EDIT
+- ✅ Edited region matches the request, surrounding pixels unchanged (composite)
+- ✅ Tests: region-split cases in `test_intents_region_split.py`
 
-**Open questions:**
-- Should we expose mask-output mode (return the mask alongside the image) for client-side debugging?
-- Florence-2 vs Grounding-DINO 1.5 — Florence-2 is smaller and integrated; Grounding-DINO 1.5 is more accurate. Default Florence-2; allow Grounding-DINO via workflow swap.
-
-**Risks:**
-- Florence-2's text-to-bbox accuracy on small/occluded objects is uneven. Phase 7 LM-router could pre-validate the target.
-- SAM 2.1's mask quality on transparent/glassy materials is poor. Document as known.
+> The original plan (Florence-2 bbox + SAM 2.1 mask) was superseded by SAM 3's direct text→mask grounding.
 
 ---
 
-## 📋 Phase 5 — Inpaint with brushed mask (LanPaint)
+## ✅ Phase 5 — Inpaint with brushed mask
 
 **Operation:** `INPAINT`
 
-**Use case:** Open WebUI lets users brush a mask over a generated image,
-then prompt for what to fill. Our provider receives the mask in the
-multimodal request payload and routes to LanPaint.
+**Use case:** a user brushes a mask over an image, then prompts for what
+to fill.
 
-**Workflow:** `inpaint_lanpaint.json`
+**Workflow:** `inpaint_qwen_image_2_1.json` — grey-fills the masked area
+in the reference, then `SetLatentNoiseMask` restricts denoise to the mask
+(2.1 otherwise paints the content elsewhere and the noise mask discards it).
 
-**Model dependency:** [LanPaint](https://github.com/scraed/LanPaint) — universal training-free inpaint that works with any Qwen-Image variant. Custom node install, no separate model file (uses already-loaded Qwen-Image-Edit).
+**Mask transport:** send the mask as `extra_body.mask_image` (PNG data URL;
+transparent = edit, or grayscale white = edit). LiteLLM drops the OpenAI
+`mask` file field before custom providers (#54).
 
 **Intent triggers:**
-- Brushed mask present in request → INPAINT regardless of words (winning rule)
-- Plus keyword fallback: `"inpaint"`, `"fill in"`, `"fill the masked area"`
+- Mask present in request → INPAINT regardless of words or alias (winning rule)
+- Keyword fallback (`"inpaint"`, `"fill in"`, `"fill the masked area"`) — on the chat path there's no mask, so this falls back to EDIT
 
 **Acceptance:**
-- [ ] LanPaint node installed in ComfyUI
-- [ ] Workflow accepts (image, mask, prompt), produces seamless fill
-- [ ] Provider extracts mask from multimodal payload (Open WebUI sends as
-      separate `image_url` part with role hint, or as a discrete file in
-      the multipart request)
-- [ ] Tests cover mask extraction, fallback behavior
+- ✅ Workflow accepts (image, mask, prompt), produces seamless fill
+- ✅ Gradio Inpaint tab brushes the mask (`gr.ImageEditor`)
+- ✅ Tests cover mask handling and fallback behavior
 
-**Open questions:**
-- Does Open WebUI's image-mask UI emit OpenAI-standard mask payloads? May need a small adapter for their specific format.
+> The original plan (LanPaint custom node) was superseded by the native 2.1 masked-latent workflow.
 
 ---
 
-## 📋 Phase 6 — Outpaint
+## ✅ Phase 6 — Outpaint
 
 **Operation:** `OUTPAINT`
 
 **Use case:** `"extend this scene to the left"`, `"make this wider"`, `"uncrop"`.
 
-**Approach:** No new model. Pad the canvas in the requested direction; create a feathered edge mask covering the new area; route through the inpaint workflow (Phase 5) to fill.
+**Approach:** No new model. `ImagePadForOutpaint` pads the canvas with a
+feathered edge mask; Qwen-Image-2.1 fills the new area.
 
-**Workflow:** `outpaint_qwen.json` — composes canvas-pad + edge-mask + LanPaint.
+**Workflow:** `outpaint_qwen_image_2_1.json`
 
 **Intent triggers:** `"extend [direction]"`, `"make this wider"`, `"outpaint"`, `"uncrop"`, `"show more of"`.
 
 **Acceptance:**
-- [ ] Workflow exists; tested on 4 outpaint directions (left/right/up/down)
-- [ ] Direction parsed from prompt (`"extend left 256px"` → 256-pixel left pad)
-- [ ] Default extension: 25% of original dimension if unspecified
-- [ ] Tests cover direction parsing edge cases
+- ✅ Direction parsed from prompt; 256 px per side when no direction matches
+- ✅ Direct callers pass `left` / `top` / `right` / `bottom` margins in `extra_body` (all zero → 256 each)
+- ✅ Tests cover direction parsing edge cases (`test_intents_outpaint_directions.py`)
 
 ---
 
-## 📋 Phase 7 — LM-based intent classifier
+## ✅ Phase 7 — LM-based intent classifier
+
+> Shipped as an optional second pass (`PROTOBANANA_LM_CLASSIFIER=1`, see
+> [docs/intent-router.md](docs/intent-router.md)) and largely superseded by
+> the tool-use chat agent ([docs/agent.md](docs/agent.md)). The spec below is
+> the original plan.
 
 **Operation:** routing layer (no new operation; replaces keyword classifier on ambiguous inputs)
 
@@ -212,15 +211,10 @@ If confidence < threshold, fall back to keyword classifier.
 
 ## ❌ Deferred
 
-### >3 reference images
+### >3 reference images — resolved
 
-Qwen-Image-Edit-2511's hard cap is 3. Nano-Banana 2 supports 14. To
-compete, we'd need either:
-- Wait for Qwen to release a higher-ref variant (unknown ETA)
-- Build a pre-mux step that pairs/selects refs intelligently (hacky, lossy)
-- Route 4+ ref requests to the cloud `protolabs/nano-banana-2` alias (defeats the local-first thesis for those tasks)
-
-For v1: document the limitation, recommend cloud-fallback. Revisit when Qwen ships next major version.
+Was deferred on Qwen-Image-Edit-2511's 3-image cap. Qwen-Image-2.1 takes up
+to 10 references natively (see Phase 3); Nano-Banana 2's 14 remains ahead.
 
 ### Streaming chat-completions
 
@@ -240,9 +234,8 @@ Defer until we have the first downstream consumer asking for it.
 
 ## Cross-phase notes
 
-**Single ComfyUI install handles everything.** ComfyUI-RMBG (Phase 2) +
-LanPaint (Phase 5) + Florence-2/SAM2 (Phase 4) are all custom nodes
-installed once via [ComfyUI-Manager](https://github.com/ltdrdata/ComfyUI-Manager)
+**Single ComfyUI install handles everything.** ComfyUI-RMBG (BiRefNet for
+Phase 2, SAM 3 for Phase 4) is the only custom node pack, installed once via [ComfyUI-Manager](https://github.com/ltdrdata/ComfyUI-Manager)
 or manual git clone. Models auto-download on first use. No per-phase
 infrastructure churn.
 
@@ -250,14 +243,13 @@ infrastructure churn.
 
 | Phase | Models loaded for that op | Peak VRAM |
 |---|---|---|
-| Gen | Qwen-Image-2512 + qwen_2.5_vl + VAE | ~30 GB |
-| Edit | Qwen-Image-Edit-2511 + qwen_2.5_vl + VAE | ~30 GB |
-| Multiref | Qwen-Image-Edit-2511 + qwen_2.5_vl + VAE | ~32 GB (multi VAE encodes) |
+| Gen / Edit | Qwen-Image-2.1 (bf16 DiT) + qwen3vl_8b int8 + VAE | ~22 GB |
+| Multiref | Same (one encode per reference) | ~22 GB |
 | BGremove | BiRefNet (alone — text models offloaded) | ~3 GB |
-| Region edit | Florence-2 + SAM 2.1 + Qwen-Image-Edit-2511 | ~33 GB |
-| Inpaint / Outpaint | Qwen-Image-Edit-2511 + LanPaint | ~30 GB |
+| Region edit | SAM 3 + Qwen-Image-2.1 | ~22 GB + SAM 3 |
+| Inpaint / Outpaint | Qwen-Image-2.1 | ~22 GB |
 
 Mode switches cost 5-10s of model load. Same-mode steady-state is warm.
 Verified against our `vllm-fast` (heretic) co-tenancy on GPU 1 — fits in
 the 33 GB free we budgeted (heretic at 0.42 util, Fish TTS at ~20 GB,
-embed at ~2 GB, ComfyUI peak ~30 GB).
+embed at ~2 GB, ComfyUI peak ~30 GB on the earlier stack; ~22 GB on 2.1).

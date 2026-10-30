@@ -40,15 +40,15 @@ the agent at all (those endpoints have no chat history to reason over).
 |---|---|
 | `user` text content (string) | Latest = the instruction |
 | `user` text content (multimodal `text` part) | Same |
-| `user` `image_url` content with `data:image/...;base64,...` | Collect, capped at 3 |
-| `assistant` markdown content with `![alt](data:...)` | Collect (latest only — that's the prior turn's output) |
+| `user` `image_url` content with `data:image/...;base64,...` | Collect, capped at 10 (`multiref.MAX_REFS`) |
+| `assistant` markdown content with `![alt](data:...)` | Collect (first data-URL image per message) |
 | `assistant` `image_url` content (multimodal) | Collect |
 
 Returns `(latest_user_text, [image_bytes, ...])` with images in
 newest-first order.
 
 **Stop conditions:**
-- Have collected 3 images → done (chat-path cap)
+- Have collected 10 images → done (matches the catalog's multiref arity)
 - No more messages
 
 ---
@@ -60,19 +60,19 @@ newest-first order.
 ```python
 # Priority order (first match wins)
 
-if explicit_mask:                 # Phase 5
+if explicit_mask:
     return INPAINT
 
 if has_init_image and bgremove_keyword(prompt):
     return BGREMOVE
 
-if has_init_image and outpaint_keyword(prompt):   # Phase 6
+if has_init_image and outpaint_keyword(prompt):
     return OUTPAINT
 
-if has_init_image and inpaint_keyword(prompt):    # Phase 5
+if has_init_image and inpaint_keyword(prompt):
     return INPAINT
 
-if has_init_image and region_edit_pattern(prompt): # Phase 4
+if has_init_image and region_edit_pattern(prompt):
     return REGION_EDIT
 
 if n_ref_images >= 2:
@@ -93,16 +93,16 @@ return GEN
 - `"make the background alpha"` / `"alpha background"` / `"with alpha channel"`
 - `"knock out the background"` / `"isolate the subject"`
 
-#### OUTPAINT (Phase 6)
+#### OUTPAINT
 - `"extend the canvas"` / `"extend left"` / `"extend right"` / `"extend up"` / `"extend down"`
 - `"outpaint"` / `"make this wider"` / `"make it wider"` / `"widen the canvas"`
 - `"show more of"` / `"expand the image"` / `"uncrop"`
 
-#### INPAINT (Phase 5)
+#### INPAINT
 - `"inpaint"` / `"fill in"` / `"fill this region"` / `"fill the masked area"`
 - `"paint over the masked"` / `"use the mask"`
 
-#### REGION_EDIT (Phase 4)
+#### REGION_EDIT
 Regex patterns:
 - `\b(?:just|only)\s+(?:the|that)\s+\w+`
 - `\bchange\s+(?:the|her|his|its|their)\s+[\w'\s]+?\s+to\b`
@@ -150,40 +150,33 @@ the workflow's internal rescaling); only GEN uses inferred size.
 |---|---|---|
 | GEN | `routes.gen` | Default workflow `qwen_image_2_1` |
 | EDIT | `routes.edit` | Default workflow `qwen_image_edit_2_1`. Single image. |
-| MULTIREF | `routes.multiref` | Default workflow `multiref_qwen_image_2_1`. 2-3 images (chat cap; the route accepts up to 10). |
+| MULTIREF | `routes.multiref` | Default workflow `multiref_qwen_image_2_1`. 2-10 images, passed natively (the agent path's `multi_ref_compose` tool passes only the first 3). |
 | BGREMOVE | `routes.bgremove` | Default workflow `bgremove_birefnet`. Single image. |
-| REGION_EDIT (Phase 4) | (planned `routes.region_edit`) | Falls back to EDIT until Phase 4 ships |
-| INPAINT (Phase 5) | (planned `routes.inpaint`) | Falls back to EDIT until Phase 5 ships |
-| OUTPAINT (Phase 6) | (planned `routes.outpaint`) | Falls back to EDIT until Phase 6 ships |
+| REGION_EDIT | `routes.region_edit` | Default workflow `region_edit_sam3_qwen_image_2_1`. Prompt split into grounding text + edit prompt (full prompt for both if the split fails). |
+| OUTPAINT | `routes.outpaint` | Default workflow `outpaint_qwen_image_2_1`. Margins parsed from direction words; 256 px all round if none match. |
+| INPAINT | `routes.inpaint` | Default workflow `inpaint_qwen_image_2_1`. Needs a mask, so it only runs from `/v1/images/edits` with `extra_body.mask_image`; a chat turn that classifies as INPAINT (keyword, no mask) falls back to EDIT. |
 
 Each route's `run(client, loader, **kwargs)` returns `bytes`. The provider
 base64-encodes and wraps in OpenAI response shape.
 
 ---
 
-## Phase 7 — LM-based classifier (queued)
+## LM second pass (optional)
 
-Will live at `protobanana/intents/llm.py`. Schema:
+Lives at `protobanana/intents/llm.py`. Off by default; enable with:
 
-```json
-{
-  "operation": "gen | edit | multiref | bgremove | region_edit | inpaint | outpaint",
-  "confidence": 0.0-1.0,
-  "target_phrase": "the man's tie | null",
-  "instruction": "make it red"
-}
-```
-
-Routing strategy (`PROTOBANANA_INTENT_MODE` env var):
-
-| Mode | Behavior |
+| Env | Purpose |
 |---|---|
-| `keyword` (default) | Current. No LM calls. ~95% accuracy. |
-| `lm` | All requests classified via LM. ~98% accuracy. ~500ms latency. |
-| `hybrid` | Keyword first; if it returns GEN with `has_init_image=True` (suspicious), call LM. ~97% accuracy. ~50ms average added. |
+| `PROTOBANANA_LM_CLASSIFIER=1` | Turn it on |
+| `PROTOBANANA_LM_BASE` | Any OpenAI-compatible base URL |
+| `PROTOBANANA_LM_KEY` | Optional, defaults to `"none"` |
+| `PROTOBANANA_LM_MODEL` | Defaults to `protolabs/fast` |
 
-Decision deferred to post-Phase 4 — we'll have real production data showing
-where the keyword classifier misses.
+It only fires when the keyword router lands on the ambiguous catch-alls
+EDIT or GEN, asks the LM for `{"op": "<operation>"}` from the same enum,
+and overrides the keyword pick whenever it returns a different valid op.
+Any error falls back to the keyword pick. Results are cached per
+`(prompt, has_init_image, n_ref_images)` for the process lifetime.
 
 ---
 
@@ -239,7 +232,7 @@ where the keyword classifier misses.
 → routes.bgremove.run(init_image_bytes=IMG)  → transparent PNG
 ```
 
-### REGION_EDIT (Phase 4 — falls back to EDIT today)
+### REGION_EDIT
 
 ```
 [user]      [image of a man with a green tie]
@@ -247,9 +240,7 @@ where the keyword classifier misses.
 
 → has_init_image=True, region_edit_pattern matches
 → classify → Operation.REGION_EDIT
-→ provider sees Phase 4 not yet implemented, logs warning, falls back:
-   routes.edit.run(prompt="change the man's tie to red", init_image_bytes=...)
+→ extract_region_edit_parts → grounding="the man's tie", edit="a red tie"
+→ routes.region_edit.run(grounding_text=..., edit_prompt=..., init_image_bytes=...)
+   (SAM 3 text→mask, Qwen-Image-2.1 repaints inside, composited back)
 ```
-
-When Phase 4 ships, this routes through Florence-2 → SAM 2.1 → masked
-inpaint instead of full-image edit.

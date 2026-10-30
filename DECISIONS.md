@@ -223,7 +223,7 @@ item in DECISIONS / `validating-workflows.md`, not blocking CI yet.
 
 ## 0011 — `TextEncodeQwenImageEditPlus` is the only correct conditioning path for edit/multiref
 
-**2026-05-03** · Status: accepted
+**2026-05-03** · Status: superseded — the 2511 workflows are retired; Qwen-Image-2.1 workflows condition via `TextEncodeQwenImage21` `images.image_N` (the lesson — image must reach the encoder, not just `latent_image` — still holds)
 
 **Context.** Initial `edit_qwen_image_2511.json` and
 `multiref_qwen_image_2511.json` used the generic SDXL-era pattern:
@@ -343,7 +343,7 @@ a config flag to switch per `model_list` entry.
 
 ## 0007 — Cap reference images at 3
 
-**2026-05-03** · Status: accepted (Qwen ceiling)
+**2026-05-03** · Status: superseded — Qwen-Image-2.1 takes up to 10 references natively (`MAX_REFS`)
 
 **Context.** Qwen-Image-Edit-2511 specs cleanly handle up to 3 reference
 images via parallel encode + conditioning stack. Nano-Banana 2 supports
@@ -390,7 +390,7 @@ ComfyUI.
 
 ## 0005 — BiRefNet default, RMBG-2.0 opt-in
 
-**2026-05-03** · Status: accepted
+**2026-05-03** · Status: superseded — RMBG-2.0 workflow retired (#49); BiRefNet only
 
 **Context.** RMBG-2.0 outperforms BiRefNet (90% vs 85% on bg-removal
 benchmark) but is **CC BY-NC 4.0** — non-commercial only. BiRefNet is
@@ -484,7 +484,7 @@ an OpenAI-compatible image endpoint. Open WebUI swaps to
 
 ## 0001 — Qwen-Image-2512 + Qwen-Image-Edit-2511 over alternatives
 
-**2026-05-02** · Status: accepted
+**2026-05-02** · Status: superseded — every Qwen route now runs on Qwen-Image-2.1 (#46, #49)
 
 **Context.** OSS image gen + edit landscape (May 2026):
 - HunyuanImage 3.0 Instruct: 80B MoE, top Elo, but too big for our 96 GB

@@ -1,7 +1,8 @@
 """protoBanana Gradio app — quick test/eval UI for the gateway image stack.
 
-Five tabs (one per operation kind) plus a Chat tab that exercises the
-auto-routing acompletion path. All tabs are clients of an OpenAI-compat
+Seven tabs (one per operation kind: Generate, Edit, Multi-ref, Sticker /
+BG remove, Region edit, Outpaint, Inpaint) plus a Chat tab that exercises
+the auto-routing acompletion path. All tabs are clients of an OpenAI-compat
 gateway exposing protoBanana model aliases.
 
 Settings (gateway URL + API key + model overrides) are kept in shared
@@ -46,10 +47,11 @@ HIDE_GATEWAY_URL = os.environ.get("PROTOBANANA_GATEWAY_URL_HIDDEN", "").lower() 
     "yes",
 )
 # Comma-separated tab IDs to replace with a "disabled" notice — e.g.
-# `PROTOBANANA_DISABLE_TABS=multiref,region_edit`. Recognized IDs:
-# `generate`, `edit`, `multiref`, `bgremove`,
-# `region_edit`, `outpaint`, `inpaint`, `chat`. Useful when a workflow is
-# known-broken on the host's model variant or out of scope for the deployment.
+# `PROTOBANANA_DISABLE_TABS=multiref`. Only `multiref` is wired to a
+# disabled notice today; other IDs (`generate`, `edit`, `bgremove`,
+# `region_edit`, `outpaint`, `inpaint`, `chat`) are parsed but have no
+# effect yet. Useful when a workflow is known-broken on the host's model
+# variant or out of scope for the deployment.
 _disabled_tabs_raw = os.environ.get("PROTOBANANA_DISABLE_TABS", "")
 DISABLED_TABS: set[str] = {t.strip() for t in _disabled_tabs_raw.split(",") if t.strip()}
 # Optional human-readable note to show in place of disabled tabs. Falls
@@ -690,8 +692,8 @@ def build_app() -> gr.Blocks:
     with gr.Blocks(title="protoBanana — test & eval", css=css) as app:
         gr.Markdown(
             "# 🍌 protoBanana — test & eval\n"
-            "Quick UI over the protoBanana gateway. Six tabs cover the "
-            "Phase 1-4 operations (gen, edit, multi-ref, sticker, region edit) "
+            "Quick UI over the protoBanana gateway. Seven tabs cover the "
+            "operations (gen, edit, multi-ref, sticker, region edit, outpaint, inpaint) "
             "plus a **Chat** tab that exercises the multi-turn auto-routing path."
         )
 
@@ -793,7 +795,7 @@ def build_app() -> gr.Blocks:
         else:
             with gr.Tab("🔀 Multi-ref"):
                 gr.Markdown(
-                    "Combine 2-3 reference images (Qwen-Image-2.1 attends to each one; the chat path caps at 3). "
+                    "Combine 2-3 reference images (Qwen-Image-2.1 attends to each one natively; the API accepts up to 10). "
                     "Goes through the chat-completions path under the hood."
                 )
                 with gr.Row():
