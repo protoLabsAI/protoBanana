@@ -28,7 +28,11 @@ curl -X POST http://your-gateway:4000/v1/images/generations \
 - `model` (string, required) — `protolabs/qwen-image` or your own alias
 - `prompt` (string, required) — text description
 - `size` (string, optional) — `WxH` (e.g. `1024x1024`, `1216x832`). Default
-  inferred from prompt keywords or `1024x1024`
+  inferred from prompt keywords or `1024x1024`. **Through the LiteLLM proxy
+  this field is dropped** (LiteLLM strips OpenAI-standard params for custom
+  providers), so also send `width` and `height` —
+- `width`, `height` (int, optional) — explicit canvas size; these pass
+  through the proxy and take effect when `size` doesn't arrive
 - `n` (int, optional) — number of images, default 1; runs in parallel
 - `response_format` (string, optional) — `b64_json` is the only supported
   value; `url` not implemented (we don't host generated images)
