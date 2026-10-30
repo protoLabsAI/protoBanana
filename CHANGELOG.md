@@ -10,6 +10,8 @@ SemVer.
 - Authenticated `GET /v1/protobanana/catalog` describes curated workflow
   parameters, input arity, licences, tiers and estimated latency, with a
   content hash for cache invalidation. Shares stem dispatch with image edits.
+- Chat reference extraction now shares the multiref route’s ten-image limit,
+  so all references accepted by the catalog reach the route.
 - Workflow validation rejects uncataloged stems; `--catalog-only` runs the
   catalog check offline. Gateway mounting instructions are in `docs/api.md`.
 

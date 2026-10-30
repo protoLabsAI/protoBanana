@@ -787,11 +787,11 @@ class ProtoBananaProvider(CustomLLM):
             order (newest first)
           - Prior assistant images (markdown data URLs we serialized) → the
             most recent one (next round's edit init)
-          - Stop after MAX images collected (3; the 2.1 multiref route takes up to 10)
+          - Stop after multiref.MAX_REFS images collected, matching the catalog
         """
         latest_user_text: str = ""
         images: list[bytes] = []
-        max_images = 3
+        max_images = multiref.MAX_REFS
 
         for msg in reversed(messages):
             role = msg.get("role")

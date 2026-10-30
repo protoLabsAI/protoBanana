@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 
 from protobanana.provider import ProtoBananaProvider, _extract_data_url_from_markdown
+from protobanana.routes.multiref import MAX_REFS
 
 
 def _make_data_url(payload: bytes = b"\x89PNG\r\nfake") -> str:
@@ -65,10 +66,10 @@ def test_multiple_user_images_collected_newest_first():
     assert len(images) == 2
 
 
-def test_max_3_images():
-    """Cap at 3 images on the chat path."""
+def test_max_images():
+    """Keep the route limit, preserving attachment order."""
     parts = [{"type": "text", "text": "compose"}]
-    for i in range(5):
+    for i in range(MAX_REFS + 2):
         parts.append(
             {
                 "type": "image_url",
@@ -77,7 +78,7 @@ def test_max_3_images():
         )
     msgs = [{"role": "user", "content": parts}]
     _, images = ProtoBananaProvider._extract_chat_request(msgs)
-    assert len(images) == 3
+    assert images == [f"img{i}".encode() for i in range(MAX_REFS)]
 
 
 def test_extract_data_url_from_markdown():

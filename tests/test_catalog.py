@@ -1,13 +1,15 @@
 """Offline catalog and gateway authentication contracts; no ComfyUI required."""
 
+import base64
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 from jsonschema import Draft202012Validator
 
 from protobanana.catalog import ALIASES, CATALOG_PATH, build_catalog, create_app
-from protobanana.provider import dispatch_operation, operation_route
+from protobanana.provider import ProtoBananaProvider, dispatch_operation, operation_route
 from scripts import validate_workflows
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / "workflows"
@@ -132,3 +134,27 @@ def test_virtual_key_route_permissions():
         else:
             with pytest.raises(Exception, match="Only proxy admin"):
                 RouteChecks.non_proxy_admin_allowed_routes_check(**kwargs)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", range(2, 11))
+async def test_catalog_multiref_images_reach_route(count, monkeypatch):
+    entry = next(e for e in build_catalog(WORKFLOWS)["aliases"] if e["op"] == "multiref")
+    images = [f"reference-{i}".encode() for i in range(count)]
+    urls = [f"data:image/png;base64,{base64.b64encode(img).decode()}" for img in images]
+    Draft202012Validator(entry["params"]).validate({"prompt": "compose", "images": urls})
+    run = AsyncMock(return_value=b"result")
+    monkeypatch.setattr("protobanana.provider.multiref.run", run)
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+    monkeypatch.setattr(ProtoBananaProvider, "_client", lambda *args: client)
+    await ProtoBananaProvider().acompletion(
+        model=f"protobanana/{entry['stem']}",
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": "compose"},
+            *[{"type": "image_url", "image_url": {"url": url}} for url in urls],
+        ]}],
+    )
+    run.assert_awaited_once()
+    assert run.await_args.kwargs["init_image_bytes_list"] == images
