@@ -56,8 +56,8 @@ Authoring those workflows is out of scope here — that's ComfyUI's job.
 See [`protoLabsAI/comfy-workflows`](https://github.com/protoLabsAI/comfy-workflows)
 for the workflow library that gets bind-mounted into the gateway. The
 workflows shipped with this repo (`qwen_image_2_1*`,
-`qwen_image_edit_2_1*`, `multiref_*`, `inpaint_*`, `outpaint_*`, `region_edit_*`, `bgremove_*`,
-`krea2_*`) are reference implementations that prove
+`qwen_image_edit_2_1*`, `multiref_*`, `inpaint_*`, `outpaint_*`, `region_edit_*`,
+`bgremove_*`) are reference implementations that prove
 the bridge works across every category — gen, edit, mask, multi-image,
 agent-routed chat — and back the model aliases below.
 

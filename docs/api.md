@@ -196,7 +196,6 @@ how you configured `model_list`):
 | `protolabs/qwen-image-region-edit` | `region_edit_sam3_qwen_image_2_1` | region_edit | SAM-grounded single-object edit |
 | `protolabs/qwen-image-inpaint` | `inpaint_qwen_image_2_1` | inpaint | Masked edit — send the mask as `extra_body.mask_image` (PNG data URL; transparent = edit, or grayscale white = edit). The `mask` file field is dropped by the gateway |
 | `protolabs/qwen-image-outpaint` | `outpaint_qwen_image_2_1` | outpaint | Canvas extension (`left/top/right/bottom` extras) |
-| `protolabs/krea2-identity-edit` | `krea2_identity_edit[_two_ref]` | krea2_edit | Identity-preserving edit; two-ref auto-selected when `person_image` is passed |
 
 But end users should mostly just use `protolabs/qwen-image-chat` — the
 chat alias auto-routes.
@@ -358,10 +357,6 @@ availability and map any locally renamed aliases in your client configuration.
 Unknown stems fail catalog construction and workflow validation rather than
 silently inventing an alias. The retired `bgremove_rmbg2` is described only
 when mounted, with `CC-BY-NC-4.0` and `non_commercial: true`.
-Identity realism variants use `protolabs/krea2-identity-edit-realism`;
-single- and two-reference stems share an alias, selected by `person_image`.
-The shipped v1.1 identity weights use the [Krea 2 Community licence](https://huggingface.co/conradlocke/krea2-identity-edit/blob/main/README.md);
-`non_commercial: false` is not a waiver of its commercial-use conditions.
 
 `params` describes logical operation inputs, excluding the routing `model`
 field. Serialize image uploads as multipart fields and extra parameters as
@@ -371,9 +366,8 @@ the `protolabs/qwen-image-multiref` alias. Route to that alias, not the
 `protolabs/qwen-image-chat` auto-router: the chat router may hand the turn to
 the agent, whose compose tool truncates to the first three references.
 Direct `/images/edits` still accepts
-only one image even for a multi-ref stem. Identity `inputs.images` counts the
-base image separately from `person_ref`; two-ref entries require
-`person_image`. Only identity omits negative conditioning. A supplied mask
+only one image even for a multi-ref stem. `inputs.person_ref` is retained for
+catalog v1 shape stability and is always `false`. A supplied mask
 on **any** edit alias overrides its normal operation to inpaint; transparent
 mask pixels are edited. Without a mask, an inpaint alias retains the existing
 fallback to ordinary edit.
@@ -386,7 +380,6 @@ fallback to ordinary edit.
 | region_edit | edit parameters plus `grounding` (otherwise inferred from prompt) |
 | outpaint | edit parameters plus `left/top/right/bottom` (nonnegative pixels; all zero means 256 on each side) |
 | bgremove | `image` only; the Images API transport still requires a prompt |
-| krea2_edit | `image`, `person_image`, `n`, `seed`, `grounding_px` (512–1536, default 768); no negative prompt |
 | multiref | `images` (2–10), `seed`, `negative_prompt` |
 
 The catalog never returns graphs or node IDs and adds no `/object_info`,
@@ -405,8 +398,7 @@ curl http://your-gateway:4000/v1/protobanana/workflows/protolabs/qwen-image \
 ```
 
 `alias` accepts a canonical catalog alias (including its `protolabs/` prefix)
-or an exact catalog `stem`. Shared identity aliases select the single-reference
-workflow; use the exact `_two_ref` stem to inspect the two-reference variant.
+or an exact catalog `stem`.
 Locally renamed gateway aliases must be mapped to catalog stems by the client,
 as with the catalog. The chat auto-router has no single graph and returns 404.
 Unknown aliases, unregistered stems and unavailable variants return HTTP 404

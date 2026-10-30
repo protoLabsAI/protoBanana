@@ -26,16 +26,6 @@ def workflow_slots(workflow: dict[str, Any], op: str) -> list[dict[str, Any]]:
         if workflow.get(node_id, {}).get("class_type") in class_types:
             slots.extend({"node_id": node_id, "input": name} for name in inputs)
 
-    if op == "krea2_edit":
-        add("72", ("LoadImage",), "image")
-        add("86", ("LoadImage",), "image")
-        add("77", ("ImageScale",), "width", "height")
-        add("82", ("EmptySD3LatentImage",), "width", "height")
-        add("84", ("Krea2EditGroundedEncode",), "prompt", "grounding_px")
-        add("85", ("Krea2EditGroundedEncode",), "grounding_px")
-        add("53", ("KSampler",), "seed")
-        return slots
-
     if op != "bgremove":
         add("3", ("KSampler",), "seed")
         for node_id in ("6", "7"):
@@ -73,11 +63,9 @@ def get_workflow(alias: str, workflows_dir: Path | None = None) -> dict[str, Any
     from fastapi import HTTPException
 
     loader = WorkflowLoader(workflows_dir)
-    # Exact stems expose variants sharing an alias. Canonical aliases prefer
-    # the single-reference workflow, matching the provider without person_image.
+    # Accept either an exact catalog stem or its gateway alias.
     stem = alias if alias in ALIASES else next(
-        (s for s, name in ALIASES.items() if name == alias and not s.endswith("_two_ref")),
-        None,
+        (s for s, name in ALIASES.items() if name == alias), None,
     )
     if stem is None or stem not in loader.available():
         raise HTTPException(status_code=404, detail=f"Unknown workflow alias: {alias}")

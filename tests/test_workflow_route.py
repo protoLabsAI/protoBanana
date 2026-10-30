@@ -15,7 +15,6 @@ from protobanana.routes import (
     edit,
     gen,
     inpaint,
-    krea2_edit,
     multiref,
     outpaint,
     region_edit,
@@ -26,7 +25,7 @@ from protobanana.workflows.loader import WorkflowLoader
 WORKFLOWS = Path(__file__).resolve().parents[1] / "workflows"
 STEMS = sorted(p.stem for p in WORKFLOWS.glob("*.json"))
 ROUTES = {module.__name__.rsplit(".", 1)[-1]: module for module in
-          (bgremove, edit, gen, inpaint, krea2_edit, multiref, outpaint, region_edit)}
+          (bgremove, edit, gen, inpaint, multiref, outpaint, region_edit)}
 
 
 @pytest.fixture
@@ -71,8 +70,7 @@ def test_slots_match_actual_substitute_writes(stem):
         node["inputs"] = dict.fromkeys(node["inputs"])
     values = dict(prompt="positive", negative_prompt="negative", seed=123,
                   width=768, height=512, image_filename="source.png",
-                  mask_filename="mask.png", person_filename="person.png",
-                  grounding_px=1024, grounding_text="hat", edit_prompt="red hat",
+                  mask_filename="mask.png", grounding_text="hat", edit_prompt="red hat",
                   left=16, top=32, right=48, bottom=64, feathering=8,
                   ref_filenames=[f"ref-{i}.png" for i in range(multiref.MAX_REFS)])
     substitute = ROUTES[dispatch_operation(stem)].substitute
@@ -89,7 +87,6 @@ def test_slots_match_actual_substitute_writes(stem):
 def test_canonical_alias_resolution(alias):
     result = get_workflow(alias, WORKFLOWS)
     assert ALIASES[result["stem"]] == alias
-    assert not result["stem"].endswith("_two_ref")
 
 
 @pytest.mark.parametrize("alias", ["unknown", "../README", "/etc/passwd",

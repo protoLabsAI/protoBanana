@@ -12,7 +12,7 @@ from protobanana.routes.multiref import MAX_REFS
 from protobanana.workflows.loader import WorkflowLoader
 
 # Explicit registrations make adding a workflow without reviewing its public
-# contract a validation error. Two-ref variants share their gateway alias.
+# contract a validation error.
 ALIASES = {
     "qwen_image_2_1": "protolabs/qwen-image",
     "qwen_image_2_1_turbo": "protolabs/qwen-image-2-1-turbo",
@@ -24,15 +24,11 @@ ALIASES = {
     "outpaint_qwen_image_2_1": "protolabs/qwen-image-outpaint",
     "region_edit_sam3_qwen_image_2_1": "protolabs/qwen-image-region-edit",
     "multiref_qwen_image_2_1": "protolabs/qwen-image-multiref",
-    "krea2_identity_edit": "protolabs/krea2-identity-edit",
-    "krea2_identity_edit_two_ref": "protolabs/krea2-identity-edit",
-    "krea2_identity_edit_realism": "protolabs/krea2-identity-edit-realism",
-    "krea2_identity_edit_realism_two_ref": "protolabs/krea2-identity-edit-realism",
 }
 CATALOG_PATH = "/v1/protobanana/catalog"
 
 
-def _params(op: str, two_ref: bool) -> dict[str, Any]:
+def _params(op: str) -> dict[str, Any]:
     image = {"type": "string", "description": "Image upload or data URL"}
     props: dict[str, Any] = {
         "prompt": {"type": "string"},
@@ -57,13 +53,6 @@ def _params(op: str, two_ref: bool) -> dict[str, Any]:
     if op == "bgremove":
         props = {"image": dict(image)}
         required = ["image"]
-    elif op == "krea2_edit":
-        del props["negative_prompt"]
-        props["person_image"] = dict(image)
-        props["grounding_px"] = {"type": "integer", "minimum": 512,
-                                  "maximum": 1536, "default": 768}
-        if two_ref:
-            required.append("person_image")
     elif op == "inpaint":
         # Through the gateway the mask rides `extra_body.mask_image` as a PNG
         # data URL: LiteLLM binds the OpenAI `mask` file field to a named
@@ -116,22 +105,21 @@ def build_catalog(workflows_dir: Path | None = None) -> dict[str, Any]:
             digest.update(part)
         stem = path.stem
         op = dispatch_operation(stem)
-        two_ref = stem.endswith("_two_ref")
         draft = stem.endswith("_turbo")
         licence = ("CC-BY-NC-4.0" if stem == "bgremove_rmbg2" else
-                   "MIT" if op == "bgremove" else
-                   "Krea-2-Community" if op == "krea2_edit" else "Qwen-Research")
+                   "MIT" if op == "bgremove" else "Qwen-Research")
         entries.append({
             "alias": ALIASES[stem], "op": op, "route": operation_route(op), "stem": stem,
-            "params": _params(op, two_ref), "tier": "draft" if draft else "final",
+            "params": _params(op), "tier": "draft" if draft else "final",
             "inputs": {"images": {"min": 0 if op == "gen" else 2 if op == "multiref" else 1,
                                    "max": 0 if op == "gen" else MAX_REFS if op == "multiref" else 1},
-                       "mask": op == "inpaint", "person_ref": op == "krea2_edit"},
+                       # person_ref stays (always False) so catalog v1 clients
+                       # keep a stable shape after Krea 2 identity edit removal.
+                       "mask": op == "inpaint", "person_ref": False},
             "licence": {"id": licence, "non_commercial": licence in {"CC-BY-NC-4.0", "Qwen-Research"}},
             "typical_latency_s": (9 if op == "gen" else 11) if draft else
                                  {"gen": 31, "edit": 38, "multiref": 40, "bgremove": 3,
-                                  "inpaint": 40, "outpaint": 40, "region_edit": 45,
-                                  "krea2_edit": 40}[op],
+                                  "inpaint": 40, "outpaint": 40, "region_edit": 45}[op],
         })
     return {"version": 1, "workflows_hash": digest.hexdigest(), "aliases": entries}
 

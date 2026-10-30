@@ -30,13 +30,9 @@ Exit code = number of failed workflows. Output looks like:
 
 ```
 [validator] ComfyUI: http://localhost:8188
-[validator] checking 13 workflow(s)
+[validator] checking 9 workflow(s)
   ✓ bgremove_birefnet.json
   ✓ inpaint_qwen_image_2_1.json
-  ✓ krea2_identity_edit.json
-  ✓ krea2_identity_edit_realism.json
-  ✓ krea2_identity_edit_realism_two_ref.json
-  ✓ krea2_identity_edit_two_ref.json
   ✓ multiref_qwen_image_2_1.json
   ✓ outpaint_qwen_image_2_1.json
   ✓ qwen_image_2_1.json
@@ -44,7 +40,7 @@ Exit code = number of failed workflows. Output looks like:
   ✓ qwen_image_edit_2_1.json
   ✓ qwen_image_edit_2_1_turbo.json
   ✓ region_edit_sam3_qwen_image_2_1.json
-[validator] 13/13 workflows pass
+[validator] 9/9 workflows pass
 ```
 
 ### As a pytest gate

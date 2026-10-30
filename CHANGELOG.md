@@ -5,6 +5,15 @@ SemVer.
 
 ## [Unreleased]
 
+### Removed — Krea 2 identity edit
+
+- Dropped the `krea2_edit` route, its four `krea2_identity_edit*` workflows,
+  catalog aliases, `person_image`/`grounding_px` handling and the Gradio
+  Identity Edit tab. In a live A/B, Qwen-Image-2.1 edit (single restage) and
+  multiref (person into scene) held likeness as well or better at 3-4x the
+  speed, so Krea 2 is retired fleet-wide. `krea2_*` stems now dispatch like any
+  unknown stem (plain edit). Catalog `inputs.person_ref` stays, always `false`.
+
 ### Added — read-only workflow inspector
 
 - Authenticated `GET /v1/protobanana/workflows/{alias}` returns curated local

@@ -37,13 +37,9 @@ def test_every_shipped_stem_has_one_entry():
 
 def test_specific_surfaces_and_licences(tmp_path):
     entries = {e["stem"]: e for e in build_catalog(WORKFLOWS)["aliases"]}
-    for stem, entry in entries.items():
+    for entry in entries.values():
         props = entry["params"]["properties"]
-        if stem.startswith("krea2_"):
-            assert "negative_prompt" not in props
-            assert props["grounding_px"]["minimum"] == 512
-            assert props["grounding_px"]["maximum"] == 1536
-            assert ("person_image" in entry["params"]["required"]) == stem.endswith("_two_ref")
+        assert entry["inputs"]["person_ref"] is False
         if entry["op"] == "bgremove":
             assert set(props) == {"image"}
         if entry["op"] == "multiref":
