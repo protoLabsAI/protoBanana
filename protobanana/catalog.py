@@ -65,8 +65,17 @@ def _params(op: str, two_ref: bool) -> dict[str, Any]:
         if two_ref:
             required.append("person_image")
     elif op == "inpaint":
-        props["mask"] = {"type": "string", "description": "PNG mask: transparent = edit"}
-        required.append("mask")
+        # Through the gateway the mask rides `extra_body.mask_image` as a PNG
+        # data URL: LiteLLM binds the OpenAI `mask` file field to a named
+        # image_edit parameter and never forwards it to CustomLLM providers,
+        # so publishing `mask` would send catalog-following clients into a
+        # silent whole-image edit. `mask_image` is the field that survives.
+        props["mask_image"] = {
+            "type": "string",
+            "description": "PNG mask as a data URL, sent via extra_body: "
+                           "transparent = edit (grayscale white = edit also works)",
+        }
+        required.append("mask_image")
     elif op == "region_edit":
         props["grounding"] = {"type": "string", "description": "Object to segment"}
     elif op == "outpaint":
@@ -143,6 +152,9 @@ def create_app() -> Any:
     from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
     from litellm.proxy.proxy_server import app
 
-    if not any(route.path == CATALOG_PATH for route in app.routes):
+    # LiteLLM mounts sub-routers and WebSocket/Mount objects that have no
+    # `.path`; match defensively so the idempotency check works across proxy
+    # versions rather than crashing on the first non-APIRoute entry.
+    if not any(getattr(route, "path", None) == CATALOG_PATH for route in app.routes):
         mount_catalog(app, user_api_key_auth)
     return app

@@ -220,7 +220,10 @@ class ProtoBananaProvider(CustomLLM):
         if raw_mask is not None:
             try:
                 mask_bytes = self._coerce_image_to_bytes(raw_mask)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OSError):
+                # A mask_image that isn't a valid data URL (http URL, typo,
+                # truncated base64) must not be treated as a server path and
+                # 500 — degrade gracefully to a plain edit instead.
                 mask_bytes = None
 
         # Krea2 identity edit optionally takes a second (person) ref.
@@ -232,7 +235,7 @@ class ProtoBananaProvider(CustomLLM):
         if raw_person is not None:
             try:
                 person_bytes = self._coerce_image_to_bytes(raw_person)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OSError):
                 person_bytes = None
 
         # Resolve the dispatched route name up front for the trace.
@@ -586,6 +589,7 @@ class ProtoBananaProvider(CustomLLM):
                         self._loader,
                         prompt=prompt,
                         init_image_bytes_list=init_images,
+                        negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
                         seed=opts.get("seed"),
                         timeout_s=max(timeout_s, 240.0),
                     )
@@ -785,9 +789,11 @@ class ProtoBananaProvider(CustomLLM):
         Image collection rules:
           - User attachments (multimodal `image_url` parts) → all of them in
             order (newest first)
-          - Prior assistant images (markdown data URLs we serialized) → the
-            most recent one (next round's edit init)
-          - Stop after multiref.MAX_REFS images collected, matching the catalog
+          - Prior assistant images (markdown data URLs we serialized) →
+            newest first, as init refs once the newer user turns are exhausted
+          - Stop after multiref.MAX_REFS images collected, matching the
+            catalog's multiref arity so every reference the catalog accepts
+            reaches the route (older history beyond the cap is ignored)
         """
         latest_user_text: str = ""
         images: list[bytes] = []

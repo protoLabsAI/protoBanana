@@ -49,6 +49,20 @@ def test_specific_surfaces_and_licences(tmp_path):
         if entry["op"] == "multiref":
             assert entry["inputs"]["images"] == {"min": 2, "max": 10}
             assert entry["route"] == "/chat/completions"
+        if entry["op"] == "inpaint":
+            # The gateway drops OpenAI's `mask` file field, so the catalog
+            # must publish `mask_image` (the extra_body data URL that
+            # survives) — not `mask`, which would route schema-following
+            # clients into a silent whole-image edit.
+            assert "mask_image" in props
+            assert "mask" not in props
+            assert "mask_image" in entry["params"]["required"]
+            assert entry["inputs"]["mask"] is True
+            Draft202012Validator(entry["params"]).validate({
+                "prompt": "a potted fern",
+                "image": "data:image/png;base64,AA==",
+                "mask_image": "data:image/png;base64,AA==",
+            })
     # Retired upstream, but still explicitly supported when operator-mounted.
     (tmp_path / "bgremove_rmbg2.json").write_text("{}")
     rmbg = build_catalog(tmp_path)["aliases"][0]
@@ -96,7 +110,7 @@ async def test_gateway_route_uses_real_bearer_auth(monkeypatch):
     monkeypatch.setattr(proxy_server, "master_key", "sk-catalog-test")
     app = create_app()
     create_app()  # factory is idempotent
-    routes = [r for r in app.routes if r.path == CATALOG_PATH]
+    routes = [r for r in app.routes if getattr(r, "path", None) == CATALOG_PATH]
     assert len(routes) == 1
     assert routes[0].methods == {"GET"}
     assert routes[0].dependant.dependencies[0].call is user_api_key_auth
@@ -158,3 +172,28 @@ async def test_catalog_multiref_images_reach_route(count, monkeypatch):
     )
     run.assert_awaited_once()
     assert run.await_args.kwargs["init_image_bytes_list"] == images
+
+
+@pytest.mark.asyncio
+async def test_catalog_multiref_negative_prompt_reaches_route(monkeypatch):
+    """The catalog advertises negative_prompt for multiref; it must be honoured."""
+    entry = next(e for e in build_catalog(WORKFLOWS)["aliases"] if e["op"] == "multiref")
+    assert "negative_prompt" in entry["params"]["properties"]
+    url = "data:image/png;base64," + base64.b64encode(b"ref").decode()
+    run = AsyncMock(return_value=b"result")
+    monkeypatch.setattr("protobanana.provider.multiref.run", run)
+    client = MagicMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+    monkeypatch.setattr(ProtoBananaProvider, "_client", lambda *args: client)
+    await ProtoBananaProvider().acompletion(
+        model=f"protobanana/{entry['stem']}",
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": "compose"},
+            {"type": "image_url", "image_url": {"url": url}},
+            {"type": "image_url", "image_url": {"url": url}},
+        ]}],
+        optional_params={"negative_prompt": "ugly, deformed"},
+    )
+    run.assert_awaited_once()
+    assert run.await_args.kwargs["negative_prompt"] == "ugly, deformed"

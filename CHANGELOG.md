@@ -22,7 +22,9 @@ SemVer.
   every `protolabs/qwen-image-inpaint` request arrived without a mask and
   fell back to whole-image edit. The provider now also reads the mask from
   `extra_body.mask_image` (PNG data URL), which survives the gateway; the
-  Gradio Inpaint tab sends it that way. `mask` still works for direct callers.
+  Gradio Inpaint tab sends it that way. The catalog's inpaint schema publishes
+  `mask_image` (not `mask`) so schema-following clients send the field that
+  works. `mask` still works for direct callers.
 
 ### Security — concurrent requests could render each other's images
 

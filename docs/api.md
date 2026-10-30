@@ -366,8 +366,11 @@ The shipped v1.1 identity weights use the [Krea 2 Community licence](https://hug
 `params` describes logical operation inputs, excluding the routing `model`
 field. Serialize image uploads as multipart fields and extra parameters as
 documented above. Multi-ref has `images` with 2–10 items: serialize these as
-`image_url` parts and `prompt` as a text part in chat `messages`, using the
-chat alias `protolabs/qwen-image-chat`. Direct `/images/edits` still accepts
+`image_url` parts and `prompt` as a text part in chat `messages`, addressing
+the `protolabs/qwen-image-multiref` alias. Route to that alias, not the
+`protolabs/qwen-image-chat` auto-router: the chat router may hand the turn to
+the agent, whose compose tool truncates to the first three references.
+Direct `/images/edits` still accepts
 only one image even for a multi-ref stem. Identity `inputs.images` counts the
 base image separately from `person_ref`; two-ref entries require
 `person_image`. Only identity omits negative conditioning. A supplied mask
@@ -379,7 +382,7 @@ fallback to ordinary edit.
 |---|---|
 | gen | `size`, `width`, `height`, `n` (default 1), `seed`, `negative_prompt`, `response_format=b64_json` |
 | edit | `image`, `n`, `seed`, `negative_prompt` |
-| inpaint | edit parameters plus `mask` (transparent = edit) |
+| inpaint | edit parameters plus `mask_image` (PNG data URL via `extra_body`; transparent = edit). The `mask` file field is dropped by the gateway |
 | region_edit | edit parameters plus `grounding` (otherwise inferred from prompt) |
 | outpaint | edit parameters plus `left/top/right/bottom` (nonnegative pixels; all zero means 256 on each side) |
 | bgremove | `image` only; the Images API transport still requires a prompt |
