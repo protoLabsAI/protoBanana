@@ -46,20 +46,24 @@ HIDE_GATEWAY_URL = os.environ.get("PROTOBANANA_GATEWAY_URL_HIDDEN", "").lower() 
     "true",
     "yes",
 )
-# Comma-separated tab IDs to replace with a "disabled" notice — e.g.
-# `PROTOBANANA_DISABLE_TABS=multiref`. Only `multiref` is wired to a
-# disabled notice today; other IDs (`generate`, `edit`, `bgremove`,
-# `region_edit`, `outpaint`, `inpaint`, `chat`) are parsed but have no
-# effect yet. Useful when a workflow is known-broken on the host's model
-# variant or out of scope for the deployment.
+# Comma-separated tab IDs to hide — e.g. `PROTOBANANA_DISABLE_TABS=chat`.
+# IDs: `generate`, `edit`, `multiref`, `bgremove`, `region_edit`,
+# `outpaint`, `inpaint`, `chat`. Hidden tabs are named in a notice under
+# the header. Useful when a workflow is known-broken on the host's model
+# variant or its alias isn't served by the deployment's gateway.
 _disabled_tabs_raw = os.environ.get("PROTOBANANA_DISABLE_TABS", "")
 DISABLED_TABS: set[str] = {t.strip() for t in _disabled_tabs_raw.split(",") if t.strip()}
-# Optional human-readable note to show in place of disabled tabs. Falls
+# Optional human-readable note shown with the disabled-tab notice. Falls
 # back to a generic message if unset.
 DISABLED_TABS_NOTE = os.environ.get(
     "PROTOBANANA_DISABLE_TABS_NOTE",
     "This workflow is disabled on this deployment.",
 )
+
+
+def _tab(tab_id: str, label: str):
+    """A tab that PROTOBANANA_DISABLE_TABS can hide by id."""
+    return gr.Tab(label, visible=tab_id not in DISABLED_TABS)
 
 DEFAULT_MODEL_GEN = os.environ.get("PROTOBANANA_MODEL_GEN", "protolabs/qwen-image")
 DEFAULT_MODEL_EDIT = os.environ.get(
@@ -744,8 +748,14 @@ def build_app() -> gr.Blocks:
                     label="Inpaint model alias", value=DEFAULT_MODEL_INPAINT
                 )
 
+        if DISABLED_TABS:
+            gr.Markdown(
+                f"**Disabled on this deployment:** {', '.join(sorted(DISABLED_TABS))}. "
+                f"{DISABLED_TABS_NOTE}"
+            )
+
         # ---- Tab: Generate ------------------------------------------
-        with gr.Tab("🎨 Generate"):
+        with _tab("generate", "🎨 Generate"):
             gr.Markdown("Text → image. Aspect ratio is inferred from the prompt unless you set Size explicitly.")
             with gr.Row():
                 with gr.Column(scale=1):
@@ -767,7 +777,7 @@ def build_app() -> gr.Blocks:
             )
 
         # ---- Tab: Edit -----------------------------------------------
-        with gr.Tab("✏️ Edit"):
+        with _tab("edit", "✏️ Edit"):
             gr.Markdown("Image + instruction → edited image. Single image only.")
             with gr.Row():
                 with gr.Column(scale=1):
@@ -787,40 +797,34 @@ def build_app() -> gr.Blocks:
             )
 
         # ---- Tab: Multi-ref ------------------------------------------
-        if "multiref" in DISABLED_TABS:
-            with gr.Tab("🔀 Multi-ref (disabled)"):
-                gr.Markdown(
-                    f"### Multi-ref is disabled on this deployment\n\n{DISABLED_TABS_NOTE}"
-                )
-        else:
-            with gr.Tab("🔀 Multi-ref"):
-                gr.Markdown(
-                    "Combine 2-3 reference images (Qwen-Image-2.1 attends to each one natively; the API accepts up to 10). "
-                    "Goes through the chat-completions path under the hood."
-                )
-                with gr.Row():
-                    m_img1 = gr.Image(label="Reference 1", type="pil", height=256)
-                    m_img2 = gr.Image(label="Reference 2", type="pil", height=256)
-                    m_img3 = gr.Image(label="Reference 3 (optional)", type="pil", height=256)
-                m_prompt = gr.Textbox(
-                    label="Compose instruction",
-                    lines=2,
-                    placeholder="put the character from image 1 in the outfit from image 2",
-                )
-                with gr.Accordion("Advanced", open=False):
-                    m_seed = gr.Number(value=-1, label="Seed (-1 = random)")
-                m_btn = gr.Button("Compose", variant="primary")
-                with gr.Row():
-                    m_out = gr.Image(label="Result", height=512)
-                    m_info = gr.Markdown(elem_classes=["protobanana-info"])
-                m_btn.click(
-                    fn=fn_multiref,
-                    inputs=[m_prompt, m_img1, m_img2, m_img3, m_seed, gateway_url, api_key, model_multiref],
-                    outputs=[m_out, m_info],
-                )
+        with _tab("multiref", "🔀 Multi-ref"):
+            gr.Markdown(
+                "Combine 2-3 reference images (Qwen-Image-2.1 attends to each one natively; the API accepts up to 10). "
+                "Goes through the chat-completions path under the hood."
+            )
+            with gr.Row():
+                m_img1 = gr.Image(label="Reference 1", type="pil", height=256)
+                m_img2 = gr.Image(label="Reference 2", type="pil", height=256)
+                m_img3 = gr.Image(label="Reference 3 (optional)", type="pil", height=256)
+            m_prompt = gr.Textbox(
+                label="Compose instruction",
+                lines=2,
+                placeholder="put the character from image 1 in the outfit from image 2",
+            )
+            with gr.Accordion("Advanced", open=False):
+                m_seed = gr.Number(value=-1, label="Seed (-1 = random)")
+            m_btn = gr.Button("Compose", variant="primary")
+            with gr.Row():
+                m_out = gr.Image(label="Result", height=512)
+                m_info = gr.Markdown(elem_classes=["protobanana-info"])
+            m_btn.click(
+                fn=fn_multiref,
+                inputs=[m_prompt, m_img1, m_img2, m_img3, m_seed, gateway_url, api_key, model_multiref],
+                outputs=[m_out, m_info],
+            )
 
         # ---- Tab: BG remove ------------------------------------------
-        with gr.Tab("🪄 Sticker / BG remove"):
+        with _tab("bgremove", "🪄 Sticker / BG remove"):
             gr.Markdown("Image → transparent PNG. Default: BiRefNet (commercial-safe).")
             with gr.Row():
                 with gr.Column(scale=1):
@@ -836,7 +840,7 @@ def build_app() -> gr.Blocks:
             )
 
         # ---- Tab: Region edit (SAM 3 grounding, isolated test) -------
-        with gr.Tab("🎯 Region edit"):
+        with _tab("region_edit", "🎯 Region edit"):
             gr.Markdown(
                 "Text-grounded inpaint. SAM 3 masks the named region; "
                 "Qwen-Image-2.1 paints inside; the rest of the image is "
@@ -870,7 +874,7 @@ def build_app() -> gr.Blocks:
             )
 
         # ---- Tab: Outpaint -------------------------------------------
-        with gr.Tab("🖼️ Outpaint"):
+        with _tab("outpaint", "🖼️ Outpaint"):
             gr.Markdown(
                 "Extend the canvas. Set per-side pixel amounts (0 = no extension on that side); "
                 "the prompt steers what fills in."
@@ -906,7 +910,7 @@ def build_app() -> gr.Blocks:
             )
 
         # ---- Tab: Inpaint --------------------------------------------
-        with gr.Tab("🩹 Inpaint"):
+        with _tab("inpaint", "🩹 Inpaint"):
             gr.Markdown(
                 "Brushed-mask inpaint. Drop in (or paste from clipboard) a source image, "
                 "then **brush** over the area you want repainted — the painted region becomes "
@@ -948,7 +952,7 @@ def build_app() -> gr.Blocks:
             )
 
         # ---- Tab: Chat (the auto-routing UX) -------------------------
-        with gr.Tab("💬 Chat"):
+        with _tab("chat", "💬 Chat"):
             gr.Markdown(
                 "Multi-turn conversational image gen + edit. The provider auto-routes per turn "
                 "between gen / edit / multi-ref / sticker based on what's in your message and history. "

@@ -327,8 +327,8 @@ Acceptable.
 The multiref route accepts up to 10 references (`MAX_REFS = 10` in
 `routes/multiref.py`), each wired natively into node 6's
 `images.image_N` slots, and the chat path collects up to the same cap
-(`_extract_chat_request`). The agent's `multi_ref_compose` tool still
-passes only the first 3. Nano-banana 2 takes 14.
+(`_extract_chat_request`), as does the agent's `multi_ref_compose`
+tool. Nano-banana 2 takes 14.
 
 ### Workflows as JSON files, not Python builders
 

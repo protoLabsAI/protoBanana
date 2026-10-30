@@ -7,7 +7,7 @@ protoBanana gateway. Eight tabs:
 |---|---|
 | 🎨 **Generate** | `/v1/images/generations` → `protolabs/qwen-image` |
 | ✏️ **Edit** | `/v1/images/edits` → `protolabs/qwen-image-edit` |
-| 🔀 **Multi-ref** | 2-3 reference images via `/v1/chat/completions` → `protolabs/qwen-image-multiref` |
+| 🔀 **Multi-ref** | 2-3 reference images (the API takes up to 10) via `/v1/chat/completions` → `protolabs/qwen-image-multiref` |
 | 🪄 **Sticker / BG remove** | `/v1/images/edits` → `protolabs/qwen-image-bgremove` |
 | 🎯 **Region edit** | `/v1/images/edits` + `extra_body.grounding` (SAM 3 text→mask) → `protolabs/qwen-image-region-edit` |
 | 🖼️ **Outpaint** | `/v1/images/edits` + per-side pixel margins → `protolabs/qwen-image-outpaint` |
@@ -57,8 +57,8 @@ override per-session:
 | `PROTOBANANA_MODEL_OUTPAINT` | `protolabs/qwen-image-outpaint` | Outpaint alias |
 | `PROTOBANANA_MODEL_INPAINT` | `protolabs/qwen-image-inpaint` | Inpaint alias |
 | `PROTOBANANA_GATEWAY_URL_HIDDEN` | (unset) | `1` hides the Gateway URL field (hosted deploys pin it via env) |
-| `PROTOBANANA_DISABLE_TABS` | (unset) | Comma-separated tab IDs to replace with a "disabled" notice. Only `multiref` is wired today |
-| `PROTOBANANA_DISABLE_TABS_NOTE` | generic message | Text shown in place of a disabled tab |
+| `PROTOBANANA_DISABLE_TABS` | (unset) | Comma-separated tab IDs to hide (`generate`, `edit`, `multiref`, `bgremove`, `region_edit`, `outpaint`, `inpaint`, `chat`); hidden tabs are named in a notice under the header |
+| `PROTOBANANA_DISABLE_TABS_NOTE` | generic message | Text added to the disabled-tabs notice |
 
 If your gateway exposes the protobanana models under different aliases
 (or you're testing alongside `protolabs/nano-banana-2`), change them in

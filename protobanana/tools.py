@@ -143,9 +143,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "function": {
             "name": "multi_ref_compose",
             "description": (
-                "Combine 2-3 reference images from the conversation into a "
-                "new image per the prompt. Only use when the user has "
-                "provided multiple input images and wants them blended."
+                f"Combine 2-{multiref.MAX_REFS} reference images from the "
+                "conversation into a new image per the prompt. Name them by "
+                "position in the prompt (<image1>, <image2>). Only use when "
+                "the user has provided multiple input images and wants them "
+                "blended."
             ),
             "parameters": {
                 "type": "object",
@@ -273,7 +275,7 @@ async def execute_tool(
             return {"error": f"multi_ref_compose needs >=2 images; only {len(init_images)} present"}
         return await multiref.run(
             comfy_client, loader,
-            prompt=prompt, init_image_bytes_list=init_images[:3],
+            prompt=prompt, init_image_bytes_list=init_images[:multiref.MAX_REFS],
             seed=seed, timeout_s=max(timeout_s, 240.0),
         )
 

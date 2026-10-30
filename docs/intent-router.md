@@ -150,7 +150,7 @@ the workflow's internal rescaling); only GEN uses inferred size.
 |---|---|---|
 | GEN | `routes.gen` | Default workflow `qwen_image_2_1` |
 | EDIT | `routes.edit` | Default workflow `qwen_image_edit_2_1`. Single image. |
-| MULTIREF | `routes.multiref` | Default workflow `multiref_qwen_image_2_1`. 2-10 images, passed natively (the agent path's `multi_ref_compose` tool passes only the first 3). |
+| MULTIREF | `routes.multiref` | Default workflow `multiref_qwen_image_2_1`. 2-10 images, passed natively on every path. |
 | BGREMOVE | `routes.bgremove` | Default workflow `bgremove_birefnet`. Single image. |
 | REGION_EDIT | `routes.region_edit` | Default workflow `region_edit_sam3_qwen_image_2_1`. Prompt split into grounding text + edit prompt (full prompt for both if the split fails). |
 | OUTPAINT | `routes.outpaint` | Default workflow `outpaint_qwen_image_2_1`. Margins parsed from direction words; 256 px all round if none match. |

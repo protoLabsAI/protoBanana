@@ -89,9 +89,8 @@ Examples:
 
 **Limit: 10 images.** Qwen-Image-2.1 takes references natively and the
 chat path collects up to 10 (`MAX_REFS`), newest first; anything older
-in the history is ignored. With the chat agent enabled, its
-`multi_ref_compose` tool still uses only the first 3 — call
-`protolabs/qwen-image-multiref` directly for 4-10 references.
+in the history is ignored. The chat agent's `multi_ref_compose` tool
+and `protolabs/qwen-image-multiref` share the same 10-image cap.
 
 **Tip:** match perspective and lighting across reference images for
 cleaner fusion.

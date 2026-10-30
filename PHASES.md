@@ -85,9 +85,8 @@
 - ✅ Workflow clones `LoadImage` node 100 per reference into node 6's `images.image_N` slots
 - ✅ Tests verify image collection order and cap
 
-**Limitation:** 10 references vs Nano-banana 2's 14. The chat agent's
-`multi_ref_compose` tool still passes only the first 3; address
-`protolabs/qwen-image-multiref` directly for more.
+**Limitation:** 10 references vs Nano-banana 2's 14 (same cap on every
+path, including the chat agent's `multi_ref_compose` tool).
 
 ---
 

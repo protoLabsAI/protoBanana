@@ -150,9 +150,8 @@ clients (Open WebUI, Slack, Discord, GitHub) display the image inline.
 }
 ```
 
-Returns one composed image. Through the `-chat` alias the agent's compose
-tool uses only the first 3 references; address
-`protolabs/qwen-image-multiref` for up to 10.
+Returns one composed image. Up to 10 references on every path (the
+`-multiref` alias, and the chat agent's compose tool).
 
 ### Edit follow-up (chat history with prior assistant image)
 
