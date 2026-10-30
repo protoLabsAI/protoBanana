@@ -5,6 +5,14 @@ SemVer.
 
 ## [Unreleased]
 
+### Security — concurrent requests could render each other's images
+
+- `ComfyUIClient.upload_image` now gives every upload a unique input
+  filename and never overwrites. Routes uploaded fixed names (`init.png`,
+  `ref_N.png`, the mask) with overwrite on, so when two edits ran at once
+  the second upload replaced the first before its `LoadImage` read it, and
+  one caller got an edit of another caller's image.
+
 ### Fixed — `/v1/images/generations` ignored the requested size
 
 - LiteLLM (1.83) strips the OpenAI-standard `size` before it calls a
