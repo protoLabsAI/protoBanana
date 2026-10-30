@@ -151,104 +151,19 @@ def test_aimage_generation_bare_stem_no_slash_uses_passed_stem(provider, monkeyp
     assert gen_run.await_args.kwargs["workflow_stem"] == "qwen_image_2_1"
 
 
-def _patch_krea2(monkeypatch):
-    fake_bytes = b"\x89PNG\r\nfake"
-    edit_run = AsyncMock(return_value=fake_bytes)
-    krea2_run = AsyncMock(return_value=fake_bytes)
-    monkeypatch.setattr("protobanana.provider.edit.run", edit_run)
-    monkeypatch.setattr("protobanana.provider.krea2_edit.run", krea2_run)
-    fake_cy = MagicMock()
-    fake_cy.__aenter__ = AsyncMock(return_value=fake_cy)
-    fake_cy.__aexit__ = AsyncMock(return_value=None)
-    monkeypatch.setattr(
-        "protobanana.provider.ProtoBananaProvider._client",
-        lambda *_a, **_k: fake_cy,
-    )
-    return edit_run, krea2_run
-
-
-def test_aimage_edit_krea2_stem_calls_krea2_route(provider, monkeypatch):
-    """A krea2_* stem must dispatch to krea2_edit.run (dual-conditioning
-    pipeline, no text negative), NOT the qwen edit route."""
-    edit_run, krea2_run = _patch_krea2(monkeypatch)
+def test_aimage_edit_retired_krea2_stem_falls_to_default_edit(provider, monkeypatch):
+    """Krea 2 identity edit was removed: a krea2_* stem is no longer
+    special-cased and dispatches like any unknown stem — to edit.run with
+    the stem passed through unchanged (no krea2 suffix rewriting)."""
+    edit_run, _bg, _multi = _patch_routes(monkeypatch)
     _run(provider.aimage_edit(
         model="protolabs/krea2_identity_edit",
         prompt="recolor the car to matte black",
         image=b"fake-input",
         optional_params={"grounding_px": 1024},
     ))
-    assert krea2_run.await_count == 1, "krea2_* must dispatch to krea2_edit.run"
-    assert edit_run.await_count == 0, "must NOT fall through to edit.run"
-    kwargs = krea2_run.await_args.kwargs
-    assert kwargs["workflow_stem"] == "krea2_identity_edit"
-    assert kwargs["grounding_px"] == 1024
-    assert kwargs["person_image_bytes"] is None
-
-
-def test_aimage_edit_krea2_person_image_forces_two_ref_stem(provider, monkeypatch):
-    """extra_body.person_image (data URL) switches the single-ref alias to
-    the two-ref workflow and forwards the decoded bytes."""
-    import base64
-
-    edit_run, krea2_run = _patch_krea2(monkeypatch)
-    person_png = b"\x89PNG\r\nperson"
-    data_url = "data:image/png;base64," + base64.b64encode(person_png).decode()
-    _run(provider.aimage_edit(
-        model="protolabs/krea2_identity_edit",
-        prompt="place the person on the bench",
-        image=b"fake-scene",
-        optional_params={"person_image": data_url},
-    ))
-    assert krea2_run.await_count == 1
-    kwargs = krea2_run.await_args.kwargs
-    assert kwargs["workflow_stem"] == "krea2_identity_edit_two_ref"
-    assert kwargs["person_image_bytes"] == person_png
-    assert kwargs["init_image_bytes"] == b"fake-scene"
-
-
-def test_aimage_edit_krea2_two_ref_stem_without_person_falls_back(provider, monkeypatch):
-    """Two-ref stem with no person_image degrades gracefully to single-ref
-    (mirrors the inpaint-without-mask fallback)."""
-    edit_run, krea2_run = _patch_krea2(monkeypatch)
-    _run(provider.aimage_edit(
-        model="protolabs/krea2_identity_edit_two_ref",
-        prompt="recolor the car",
-        image=b"fake-input",
-    ))
-    assert krea2_run.await_count == 1
-    kwargs = krea2_run.await_args.kwargs
-    assert kwargs["workflow_stem"] == "krea2_identity_edit"
-    assert kwargs["person_image_bytes"] is None
-
-
-def test_aimage_edit_krea2_variant_stem_keeps_identity_with_person(provider, monkeypatch):
-    """A krea2 stem VARIANT (realism LoRA) + person_image gets the variant's
-    own two-ref sibling — not clobbered to the plain two-ref workflow."""
-    import base64
-
-    edit_run, krea2_run = _patch_krea2(monkeypatch)
-    data_url = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\nperson").decode()
-    _run(provider.aimage_edit(
-        model="protolabs/krea2_identity_edit_realism",
-        prompt="place the person at the market",
-        image=b"fake-scene",
-        optional_params={"person_image": data_url},
-    ))
-    assert krea2_run.await_count == 1
-    assert krea2_run.await_args.kwargs["workflow_stem"] == "krea2_identity_edit_realism_two_ref"
-
-
-def test_aimage_edit_krea2_variant_two_ref_without_person_strips_suffix(provider, monkeypatch):
-    """Variant two-ref stem with no person_image falls back to the variant's
-    single-ref sibling, preserving the variant."""
-    edit_run, krea2_run = _patch_krea2(monkeypatch)
-    _run(provider.aimage_edit(
-        model="protolabs/krea2_identity_edit_realism_two_ref",
-        prompt="recolor the car",
-        image=b"fake-input",
-    ))
-    assert krea2_run.await_count == 1
-    assert krea2_run.await_args.kwargs["workflow_stem"] == "krea2_identity_edit_realism"
+    assert edit_run.await_count == 1
+    assert edit_run.await_args.kwargs["workflow_stem"] == "krea2_identity_edit"
 
 
 def _patch_gen(monkeypatch):
@@ -389,7 +304,7 @@ def test_aimage_edit_inpaint_stem_without_mask_falls_back_to_edit(provider, monk
 
 # ---- client-supplied path must never be read off the gateway host ----------
 #
-# mask_image / person_image arrive as raw strings in extra_body, fully under
+# mask_image arrives as a raw string in extra_body, fully under
 # client control. A non-data-URL string must be rejected, NOT opened as a
 # server filesystem path — otherwise a client could name a file that happens
 # to exist on the gateway host and have it read and uploaded to ComfyUI.
@@ -428,27 +343,6 @@ def test_aimage_edit_mask_image_existing_path_via_extra_kwargs_not_read(
     ))
     assert inpaint_run.await_count == 0
     assert edit_run.await_count == 1
-
-
-def test_aimage_edit_person_image_filesystem_path_is_not_read(
-    provider, monkeypatch, tmp_path
-):
-    """A person_image naming a real file on the gateway host is rejected: the
-    krea2 edit stays single-ref and the file is never forwarded as a ref."""
-    edit_run, krea2_run = _patch_krea2(monkeypatch)
-    secret = tmp_path / "person.png"
-    secret.write_bytes(b"\x89PNG\r\nserver-side-secret")
-    _run(provider.aimage_edit(
-        model="protolabs/krea2_identity_edit",
-        prompt="place the person on the bench",
-        image=b"fake-scene",
-        optional_params={"person_image": str(secret)},
-    ))
-    assert krea2_run.await_count == 1
-    kwargs = krea2_run.await_args.kwargs
-    # Path was NOT read: no person ref, single-ref stem retained.
-    assert kwargs["person_image_bytes"] is None
-    assert kwargs["workflow_stem"] == "krea2_identity_edit"
 
 
 def test_coerce_image_to_bytes_allow_path_false_rejects_path(tmp_path):

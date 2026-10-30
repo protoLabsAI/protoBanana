@@ -230,8 +230,7 @@ workflows/
 ├── inpaint_qwen_image_2_1.json            # masked edit
 ├── outpaint_qwen_image_2_1.json           # canvas extension
 ├── region_edit_sam3_qwen_image_2_1.json   # SAM 3 text→mask + masked edit
-├── bgremove_birefnet.json                 # bg removal (commercial)
-└── krea2_identity_edit*.json              # identity-preserving edit (4 variants)
+└── bgremove_birefnet.json                 # bg removal (commercial)
 ```
 
 Each file is a valid ComfyUI workflow that runs standalone in the ComfyUI
