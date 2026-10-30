@@ -29,12 +29,12 @@ gateway; the Space never touches model weights.
 
 ## Why this design
 
-- HF Space CPU-only hardware can't run a 20B Qwen-Image at any reasonable
+- HF Space CPU-only hardware can't run a 7B Qwen-Image-2.1 at any reasonable
   speed
 - HF Space ZeroGPU has cold-start + queueing penalties that ruin the
   conversational UX
 - protoBanana is a **server-side stack** — the Gradio UI is intentionally
-  thin, ~600 LOC of pure OpenAI client code
+  thin, ~1000 LOC of pure OpenAI client code
 
 If you want to *try the UI* without hosting a gateway: ping us — we may
 host a public demo on the protoLabs gateway with rate limits.
@@ -54,8 +54,8 @@ See the [protoBanana installation guide](https://github.com/protoLabsAI/protoBan
 — covers ComfyUI, model downloads, LiteLLM config, and the symlinks.
 
 The full stack needs:
-- A Linux box with an NVIDIA GPU (~24GB VRAM recommended for Qwen-Image FP8)
-- ComfyUI + Qwen-Image-2512 + Qwen-Image-Edit-2511 + ComfyUI-RMBG node pack
+- A Linux box with an NVIDIA GPU (~24GB VRAM recommended for Qwen-Image-2.1: ~22 GB peak with the bf16 DiT + int8 text encoder)
+- ComfyUI >= 0.37 + Qwen-Image-2.1 (+ Turbo) + ComfyUI-RMBG node pack (BiRefNet, SAM 3)
 - LiteLLM gateway with the protobanana custom provider registered
 
 For organizations that need data locality, this is the path. For everyone

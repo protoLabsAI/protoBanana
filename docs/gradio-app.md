@@ -1,7 +1,7 @@
 # GRADIO-APP
 
-> Test/eval UI for protoBanana. Lives in `app/`. Five tabs covering the
-> full Phase 1-3 surface.
+> Test/eval UI for protoBanana. Lives in `app/`. Eight tabs covering every
+> operation plus multi-turn chat.
 
 ---
 
@@ -17,7 +17,7 @@ Three audiences:
    try the UI; if they like it, the README points them at the
    self-hosting path.
 
-The app is intentionally a thin client (~600 LOC). All the model logic
+The app is intentionally a thin client (~1000 LOC). All the model logic
 lives server-side in the gateway + provider. Gradio is just rendering.
 
 ## Architecture
@@ -37,14 +37,17 @@ The Gradio app talks ONLY to the gateway. It doesn't touch models,
 ComfyUI, or any GPU. The Space deploy is CPU-only; the gateway runs
 wherever your GPU lives.
 
-## Five tabs, five operations
+## Eight tabs, seven operations + chat
 
 | Tab | Endpoint | Model alias |
 |---|---|---|
 | Generate | `/v1/images/generations` | `protolabs/qwen-image` |
 | Edit | `/v1/images/edits` | `protolabs/qwen-image-edit` |
-| Multi-ref | `/v1/chat/completions` (multimodal) | `protolabs/qwen-image-chat` |
+| Multi-ref | `/v1/chat/completions` (multimodal) | `protolabs/qwen-image-multiref` |
 | Sticker / BG remove | `/v1/images/edits` | `protolabs/qwen-image-bgremove` |
+| Region edit | `/v1/images/edits` + `extra_body.grounding` | `protolabs/qwen-image-region-edit` |
+| Outpaint | `/v1/images/edits` + per-side margins | `protolabs/qwen-image-outpaint` |
+| Inpaint | `/v1/images/edits` + `extra_body.mask_image` (brushed) | `protolabs/qwen-image-inpaint` |
 | Chat | `/v1/chat/completions` (multi-turn auto-routing) | `protolabs/qwen-image-chat` |
 
 The Chat tab is the most useful — it exercises the same auto-routing
@@ -53,12 +56,14 @@ a follow-up turn picks the right operation from history.
 
 ## Settings accordion
 
-Six fields, all overridable per-session:
+Ten fields, all overridable per-session:
 
-- Gateway URL (`GATEWAY_URL` env default)
+- Gateway URL (`GATEWAY_URL` env default; hidden when
+  `PROTOBANANA_GATEWAY_URL_HIDDEN=1`)
 - API key (`GATEWAY_API_KEY` / `LITELLM_API_KEY` env default)
-- Model aliases for gen / edit / chat / bgremove (env defaults map to
-  the protoLabs gateway names)
+- Model aliases for gen / edit / chat / bgremove / region edit /
+  multi-ref / outpaint / inpaint (`PROTOBANANA_MODEL_*` env defaults map
+  to the protoLabs gateway names — see [app/README.md](https://github.com/protoLabsAI/protoBanana/blob/main/app/README.md))
 
 Useful when:
 - Testing a new model alias added to your gateway
@@ -104,17 +109,16 @@ itself, since all the gateway-side logic runs on your gateway.
 - No streaming; each call is a buffered round-trip
 - Chat history not persisted across reloads (intentional — this is a
   test/eval UI, not a product)
-- Multi-ref hard-capped at 3 (chat-path cap; the direct multiref route accepts up to 10)
-- No mask brushing for Phase 5 inpaint (queued — Gradio's
-  `gr.ImageEditor` is the natural surface when we add it)
+- Multi-ref tab has 3 upload slots (a UI limit; the API accepts up to 10)
 
 ## Where this fits in the roadmap
 
 The Gradio app isn't part of the model stack — it's a tool for
-exercising the stack. Each Phase shipping (4 region edit, 5 inpaint,
-6 outpaint) adds capabilities to the gateway; the Gradio app gets
-matching tabs as those phases land.
+exercising the stack. Each operation the gateway gains gets a matching
+tab; all seven (gen, edit, multi-ref, bgremove, region edit, outpaint,
+inpaint) are covered today.
 
-For Phase 5 (inpaint with brushed mask), we'll switch the Edit tab's
-image input to `gr.ImageEditor` so users can brush a mask. The provider
-sees the mask and routes to LanPaint.
+The Inpaint tab uses `gr.ImageEditor` so users can brush a mask; the
+app sends it as `extra_body.mask_image` (a PNG data URL — the gateway
+drops a multipart `mask` file) and the provider routes to the
+Qwen-Image-2.1 inpaint workflow.

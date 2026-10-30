@@ -37,7 +37,7 @@ features:
     details: For organizations that can't or won't send data to a third party. Your gateway, your ComfyUI, your weights. We never see a pixel.
   - icon: 📈
     title: Honest about gaps
-    details: 5-15pp behind frontier on hardest cases. 3-reference cap on the chat path (10 on the direct multiref route) vs Nano-Banana 2's 14. Where it's good, it's competitive; where it's not, we say so.
+    details: 5-15pp behind frontier on hardest cases. 10-reference cap (Qwen-Image-2.1, native) vs Nano-Banana 2's 14. Where it's good, it's competitive; where it's not, we say so.
 ---
 
 ## What it is, in one sentence
@@ -59,7 +59,7 @@ A LiteLLM `CustomLLM` provider that exposes ComfyUI workflows as OpenAI-compatib
   [transparent png]
 
   user: change just the hat to red
-  [masked region edit — Phase 4]
+  [masked region edit — SAM 3 text→mask]
 ```
 
 One model alias (`protolabs/qwen-image-chat`) handles all of it. The provider walks message history, classifies the operation per turn, dispatches to the right ComfyUI workflow.
@@ -81,4 +81,4 @@ For most teams: both. Use the closed APIs for one-off best-quality work, route b
 - Setting up the full stack? → [Installation](/installation)
 - Curious about the design? → [Architecture](/architecture)
 - The whole story (research → broken integrations → repo extraction)? → [Journey](/deep-dives/journey)
-- Roadmap (Phases 4-7 queued)? → [Phases](/deep-dives/phases)
+- Roadmap (all seven phases shipped)? → [Phases](/deep-dives/phases)

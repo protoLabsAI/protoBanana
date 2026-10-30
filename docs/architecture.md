@@ -41,7 +41,8 @@
                  │                  REGION_EDIT|INPAINT|OUTPAINT}   │
                  │            │                                     │
                  │            ▼                                     │
-                 │   routes/{gen,edit,multiref,bgremove}.py         │
+                 │   routes/{gen,edit,multiref,bgremove,            │
+                 │           region_edit,inpaint,outpaint}.py       │
                  │     ├── load workflow JSON                       │
                  │     ├── substitute(prompt, seed, …)              │
                  │     ├── client.upload_image (if needed)          │
@@ -159,9 +160,9 @@ Single class: `WorkflowLoader`. Initialized with a workflows dir path
 ### `protobanana.intents.keywords`
 
 Operation classifier + aspect-ratio inference. Pure functions, deterministic,
-no LM calls. Phase 7 may add an LM-based classifier in `intents/llm.py` —
-the provider would route through both with `keyword` first, `llm` on
-fallback.
+no LM calls. An optional LM second pass lives in `intents/llm.py`
+(`PROTOBANANA_LM_CLASSIFIER=1`): keyword first, the LM only re-checks the
+catch-all EDIT/GEN picks (see [intent-router.md](intent-router.md)).
 
 Public API:
 - `Operation` enum (GEN, EDIT, MULTIREF, BGREMOVE, REGION_EDIT, INPAINT, OUTPAINT)
@@ -197,6 +198,9 @@ They're isolated, testable, swappable.
 | `edit` | `qwen_image_edit_2_1` | prompt, neg_prompt, seed, image filename (nodes 6/3/4) | bytes |
 | `multiref` | `multiref_qwen_image_2_1` | prompt, neg_prompt, seed, up to 10 image filenames (nodes 6/3/100, 101, … → `images.image_1..N` on node 6) | bytes |
 | `bgremove` | `bgremove_birefnet` | image filename only (node 4) | bytes (PNG with alpha) |
+| `region_edit` | `region_edit_sam3_qwen_image_2_1` | edit prompt, neg_prompt, seed, image filename, SAM 3 grounding text (nodes 6/3/4/30) | bytes |
+| `inpaint` | `inpaint_qwen_image_2_1` | prompt, neg_prompt, seed, image + mask filenames (nodes 6/3/4/20); masked area grey-filled before sampling | bytes |
+| `outpaint` | `outpaint_qwen_image_2_1` | prompt, neg_prompt, seed, image filename, left/top/right/bottom margins (nodes 6/3/4/20) | bytes |
 
 ### `protobanana.provider`
 
@@ -208,13 +212,13 @@ The LiteLLM `CustomLLM` subclass. Three async entry points:
 
 Plus helpers:
 - `_extract_chat_request(messages)` — walks history, returns
-  (latest_user_text, all_images[:3])
+  (latest_user_text, all_images[:MAX_REFS]) — up to 10
 - `_coerce_image_to_bytes(image)` — bytes / file-like / str / data URL / path
   → bytes
 - `_image_response`, `_chat_response` — build OpenAI-shaped responses
 
 The provider is thin: pick op, call route's `run()`, format response.
-~300 LOC.
+~850 LOC.
 
 ### `workflows/`
 
@@ -309,21 +313,22 @@ gets the same UX with zero per-client code. See [DECISIONS.md §0006](../DECISIO
 Each operation has its own `routes/<op>.py` with its own `substitute()`.
 We could share via a `substitute(workflow, mapping)` helper. Chose
 per-route because:
-- Conventions vary (gen uses `EmptySD3LatentImage` for size; edit uses
-  `LoadImage` for input; multiref uses parallel chains)
+- Conventions vary (gen uses `EmptyLatentImage` for size; edit uses
+  `LoadImage` for input; multiref clones `LoadImage` node 100 per ref;
+  inpaint/region edit add a mask source)
 - One module is easier to evolve than a shared substrate when ops diverge
 - Tests stay focused (each route's tests cover only that route)
 
-Trade: 4 modules of ~50 LOC each instead of 1 module of ~150 LOC.
+Trade: 7 modules of ~70-160 LOC each instead of one shared substrate.
 Acceptable.
 
 ### Reference caps
 
-The chat path collects at most 3 images (`_extract_chat_request`). The
-multiref route itself accepts up to 10 (`MAX_REFS = 10` in
+The multiref route accepts up to 10 references (`MAX_REFS = 10` in
 `routes/multiref.py`), each wired natively into node 6's
-`images.image_N` slots. Documented in [PHASES.md](../PHASES.md) as a
-known limitation vs nano-banana 2.
+`images.image_N` slots, and the chat path collects up to the same cap
+(`_extract_chat_request`), as does the agent's `multi_ref_compose`
+tool. Nano-banana 2 takes 14.
 
 ### Workflows as JSON files, not Python builders
 

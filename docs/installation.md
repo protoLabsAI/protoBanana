@@ -55,7 +55,7 @@ curl http://localhost:8188/queue   # should return {"queue_running":[],"queue_pe
 These pin the operations to specific upstream model packs. Install once;
 they auto-download models on first use.
 
-### 2.1 ComfyUI-RMBG (covers Phase 2 + part of Phase 4)
+### 2.1 ComfyUI-RMBG (background removal + region-edit grounding)
 
 ```bash
 cd ~/dev/ComfyUI/custom_nodes
@@ -65,16 +65,9 @@ pip install -r requirements.txt   # uses ComfyUI's venv
 ```
 
 Provides: BiRefNet, BEN/BEN2, INSPYRENET, SDMatte, SAM/SAM2/SAM3,
-GroundingDINO. All under one install.
-
-### 2.2 LanPaint (Phase 5)
-
-```bash
-cd ~/dev/ComfyUI/custom_nodes
-git clone https://github.com/scraed/LanPaint
-```
-
-Universal Qwen-Image inpaint. Python-only, no model files of its own.
+GroundingDINO. All under one install. protoBanana uses `BiRefNetRMBG`
+(bgremove) and `SAM3Segment` (region edit). Inpaint and outpaint need no
+extra node pack — they use core ComfyUI nodes with Qwen-Image-2.1.
 
 Restart ComfyUI:
 
@@ -134,7 +127,7 @@ curl -sS http://localhost:8188/object_info | jq '.UNETLoader.input.required.unet
 Should list both `qwen_image_2.1_bf16.safetensors` and
 `qwen_image_2.1_turbo_bf16.safetensors`.
 
-### 3.2 BiRefNet (Phase 2)
+### 3.2 BiRefNet (background removal)
 
 Auto-downloaded by ComfyUI-RMBG on first invocation. No manual step.
 
@@ -257,7 +250,8 @@ directly — no image-button toggle required. See [HOWTO.md](../HOWTO.md).
 ## 8. GPU planning
 
 If your GPU is shared with other services (vLLM, TTS, embeddings),
-budget 30 GB peak for ComfyUI. Reduce other services' `--gpu-memory-utilization`
+budget ~22 GB peak for ComfyUI (Qwen-Image-2.1, bf16 DiT + int8 text
+encoder) plus headroom. Reduce other services' `--gpu-memory-utilization`
 to leave room. See [OPERATING.md — GPU planning](OPERATING.md#gpu-planning)
 for the concrete sizing we use on a 96 GB Blackwell shared with vLLM +
 Fish TTS + embedding server.

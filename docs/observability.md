@@ -124,8 +124,8 @@ An LM-based second-pass classifier is available for disambiguating
 prompts the keyword router lumps under EDIT/GEN. Off by default; the
 keyword router covers ~95% of agent prompts at 0 ms latency without
 risk of LM hallucination. The LM only fires when the keyword router
-returns EDIT or GEN and gets to OVERRIDE the keyword pick only if it
-returns a more specific operation.
+returns EDIT or GEN and OVERRIDES the keyword pick whenever it returns a
+different valid operation.
 
 Enable by exporting:
 

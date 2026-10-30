@@ -7,7 +7,7 @@
 You need:
 
 - A running [LiteLLM gateway](https://docs.litellm.ai/docs/proxy/quick_start) (or the willingness to spin one up)
-- [ComfyUI](https://github.com/comfyanonymous/ComfyUI) running on a machine with an NVIDIA GPU (~24 GB VRAM recommended for Qwen-Image FP8)
+- [ComfyUI](https://github.com/comfyanonymous/ComfyUI) running on a machine with an NVIDIA GPU (~24 GB VRAM recommended; Qwen-Image-2.1 peaks ~22 GB with the bf16 DiT + int8 text encoder)
 - The [Qwen-Image-2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1) model files in ComfyUI's standard directories (ComfyUI >= 0.37; see [installation](../installation.md))
 
 If you don't have these yet, see the [full Installation guide](/installation).
@@ -84,7 +84,7 @@ pip install -e ".[gradio]"
 GATEWAY_URL=http://your-gateway:4000/v1 GATEWAY_API_KEY=sk-... python -m app
 ```
 
-Opens at `http://localhost:7860` — five tabs covering Generate, Edit, Multi-ref, Sticker, and Chat. See the [Gradio app docs](/gradio-app).
+Opens at `http://localhost:7860` — eight tabs covering Generate, Edit, Multi-ref, Sticker / BG remove, Region edit, Outpaint, Inpaint, and Chat. See the [Gradio app docs](/gradio-app).
 
 ## What just happened
 
@@ -97,11 +97,11 @@ Your chat client → LiteLLM gateway → the protoBanana provider → ComfyUI �
 5. Submitted to ComfyUI, polled for completion, fetched the result image
 6. Returned an OpenAI-shaped response
 
-Total provider code: ~600 LOC. Most of the value is in the orchestration, not the model layer.
+Total provider code: ~3,700 LOC (incl. the chat agent and tracing). Most of the value is in the orchestration, not the model layer.
 
 ## Next steps
 
 - [Operating guide](/operating) — GPU planning, model swap behavior, troubleshooting
 - [Architecture](/architecture) — component breakdown + extension model
 - [How-to recipes](/deep-dives/howto) — prompting tricks, multi-ref tips, intent keywords
-- [Phases roadmap](/deep-dives/phases) — what's queued (region edit, inpaint, outpaint, LM intent classifier)
+- [Phases roadmap](/deep-dives/phases) — how each operation shipped (region edit, inpaint, outpaint, LM intent classifier)

@@ -12,8 +12,7 @@ abstract: >
   image generation, instruction edit, multi-reference compose, background
   removal, region-aware edit, inpaint, and outpaint. Routed via OpenAI
   /v1/chat/completions, /v1/images/generations, and /v1/images/edits.
-  Backed by Qwen-Image-2512 + Qwen-Image-Edit-2511 + Florence-2 + SAM 2.1
-  + BiRefNet/RMBG.
+  Backed by Qwen-Image-2.1 (+ 2.1 Turbo) + SAM 3 + BiRefNet.
 license: Apache-2.0
 keywords:
   - image generation

@@ -4,8 +4,8 @@ Three LiteLLM entry points:
   - aimage_generation → text-to-image (`gen` route)
   - aimage_edit       → image+prompt → image (`edit` route)
   - acompletion       → multi-turn chat with image output; auto-routes per turn
-                        between gen / edit / multiref / bgremove (Phase 1-3)
-                        and region_edit / inpaint / outpaint (Phases 4-6, queued)
+                        between gen / edit / multiref / bgremove / region_edit /
+                        outpaint (inpaint needs a mask, so it runs via aimage_edit)
 
 The provider stays thin: it parses the request, classifies the intent, calls
 the right `routes/*.run()`, formats the response. All ComfyUI HTTP lives in
@@ -250,7 +250,7 @@ class ProtoBananaProvider(CustomLLM):
         elif route_name == "inpaint":
             # Inpaint stem requested but no mask supplied — caller bug,
             # but degrade gracefully to plain edit (model still has
-            # access to the image via TextEncodeQwenImageEditPlus).
+            # access to the image via TextEncodeQwenImage21's images.image_1).
             log.warning(
                 "[protobanana] inpaint stem %s requested without mask; "
                 "falling back to edit", workflow_stem,
@@ -616,9 +616,11 @@ class ProtoBananaProvider(CustomLLM):
                         timeout_s=timeout_s,
                     )
                 else:
-                    # Phase 4-6 ops fall back to edit until their workflows ship
+                    # Only INPAINT lands here: a chat turn carries no mask, so
+                    # a keyword-classified inpaint falls back to a plain edit
                     log.warning(
-                        "[protobanana] op=%s not yet implemented; falling back to edit",
+                        "[protobanana] op=%s needs a mask, which chat turns can't carry; "
+                        "falling back to edit",
                         op.value,
                     )
                     parent.update(metadata={"phase4_6_fallback": True})

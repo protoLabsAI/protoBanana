@@ -1,15 +1,17 @@
 # BENCHMARKS
 
-> Methodology + how to reproduce. Numbers landing here as Phases 1-7 ship.
+> Methodology + how to reproduce. All seven operations have shipped; scored numbers land here as runs complete.
 
 ---
 
 ## Status
 
-**Phase 1-3** (gen + edit + multi-ref + bgremove) — implemented; benchmarking
-pipeline scaffolded but full numbers not yet committed.
-
-**Phase 4-7** — methodology defined; runs blocked on those phases shipping.
+All operations (gen, edit, multi-ref, bgremove, region edit, inpaint,
+outpaint, plus the Turbo draft tier) are implemented on Qwen-Image-2.1;
+methodology defined, full scored numbers not yet committed. Warm latency
+spot-checks (A6000, published as `typical_latency_s` in the catalog): gen
+~31s (Turbo ~9s), edit ~38s (Turbo ~11s), multi-ref ~40s, inpaint /
+outpaint ~40s, region edit ~45s, bgremove ~3s.
 
 ---
 
@@ -98,16 +100,16 @@ abstract art, design styles.
 - Three character refs (group shot)
 - Foreground + midground + background
 
-### Region edit suite (Phase 4) — 10 prompts
+### Region edit suite — 10 prompts
 
 - "change the man's tie to red"
 - "replace her hat with a top hat"
 - "make just the dog smaller"
 - ... (etc.)
 
-### Inpaint suite (Phase 5) — 5 prompts with brushed masks
+### Inpaint suite — 5 prompts with brushed masks
 
-### Outpaint suite (Phase 6) — 5 directional extensions
+### Outpaint suite — 5 directional extensions
 
 ---
 
@@ -144,8 +146,8 @@ uv run python benchmarks/score.py \
   --output benchmarks/scored/2026-05-XX.csv
 ```
 
-Scoring is currently a hand-rating UI; Phase 7 may add LLM-as-judge
-auto-scoring for prompt adherence.
+Scoring is currently a hand-rating UI; LLM-as-judge auto-scoring for
+prompt adherence may follow.
 
 ---
 
@@ -154,10 +156,10 @@ auto-scoring for prompt adherence.
 Going in:
 
 - We **expect** to lose 5-15pp to nano-banana 2 / GPT-Image-2 on raw
-  quality (multi-source comparisons consistently rank Qwen-Image-Edit
-  behind frontier).
+  quality (multi-source comparisons consistently rank open-weights Qwen
+  edit models behind frontier).
 - We **expect** to win on text rendering (Qwen's strength).
-- We **expect** to lose badly on >3-reference compose tasks (3 vs 14 cap).
+- We **expect** to lose on >10-reference compose tasks (10 vs 14 cap).
 - We **expect** to win on cost-per-image and data locality (definitionally).
 - We **expect** comparable or better latency vs cloud APIs on local infra
   (warm models < network round-trip + cold-start in the cloud).

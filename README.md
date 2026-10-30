@@ -14,7 +14,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-Phase%207-blue.svg)](PHASES.md)
-[![Tests](https://img.shields.io/badge/tests-99%20passing-brightgreen.svg)](tests/) [![Docs](https://img.shields.io/badge/docs-vitepress-emerald.svg)](https://protolabsai.github.io/protoBanana/)
+[![Tests](https://img.shields.io/badge/tests-193%20passing-brightgreen.svg)](tests/) [![Docs](https://img.shields.io/badge/docs-vitepress-emerald.svg)](https://protolabsai.github.io/protoBanana/)
 
 ## The capability — workflow JSON as OpenAI model name
 
@@ -95,7 +95,7 @@ running entirely on local GPUs through your own LiteLLM gateway.
 
 ## Headline numbers
 
-| | nano-banana 2 | protoBanana (Phase 1) |
+| | nano-banana 2 | protoBanana |
 |---|:-:|:-:|
 | Operation auto-routing per chat turn | ✓ | ✓ |
 | Conversational replies + clarifying questions | ✓ | ✓ (agent path) |
@@ -201,7 +201,7 @@ See [docs/installation.md](docs/installation.md) for the full setup
 
 The chat agent is the default; the keyword classifier kicks in only when
 `PROTOBANANA_AGENT_BASE` is unset or the LLM endpoint fails. Either path
-calls the same six route modules.
+calls the same seven route modules.
 
 See [docs/architecture.md](docs/architecture.md) for the full breakdown
 and [docs/agent.md](docs/agent.md) for the agent loop in detail.
@@ -219,8 +219,8 @@ not the product. It exists for two specific reasons:
    the JSON into the gateway's mount, add a model alias to LiteLLM,
    hit the Gradio tab to validate end-to-end — usually 30 seconds.
 
-Five tabs covering Generate, Edit, Multi-ref, Sticker, and Chat (multi-turn
-auto-routing). Runs anywhere with Python 3.11+; intended for local
+Eight tabs covering Generate, Edit, Multi-ref, Sticker / BG remove, Region
+edit, Outpaint, Inpaint, and Chat (multi-turn auto-routing). Runs anywhere with Python 3.11+; intended for local
 debugging AND HuggingFace Space deployment. See [app/README.md](app/README.md)
 and [docs/gradio-app.md](docs/gradio-app.md).
 
@@ -265,9 +265,8 @@ protoBanana is a synthesis, not an invention. Credit:
 |---|---|
 | Image gen + edit | [Qwen-Image-2.1](https://github.com/QwenLM/Qwen-Image-2.1) (Alibaba; Qwen Research License, non-commercial) |
 | Background removal | [BiRefNet](https://github.com/ZhengPeng7/BiRefNet) |
-| Region segmentation (Phase 4) | [Florence-2](https://huggingface.co/microsoft/Florence-2-large) (Microsoft), [SAM 2.1](https://github.com/facebookresearch/sam2) (Meta) |
-| Universal inpaint (Phase 5) | [LanPaint](https://github.com/scraed/LanPaint) |
-| Bundled ComfyUI nodes | [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG) (1038lab) — BiRefNet/SAM/Grounding |
+| Region segmentation (text→mask) | [SAM 3](https://github.com/facebookresearch/sam3) (Meta) |
+| Bundled ComfyUI nodes | [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG) (1038lab) — BiRefNet + SAM 3 |
 | LLM gateway | [LiteLLM](https://github.com/BerriAI/litellm) (BerriAI) |
 | Image runtime | [ComfyUI](https://github.com/comfyanonymous/ComfyUI) |
 | Original paradigm | [Nano-Banana 2](https://deepmind.google/) (Google), [GPT-Image-2](https://openai.com/) (OpenAI) |

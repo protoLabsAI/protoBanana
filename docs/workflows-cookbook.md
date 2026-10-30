@@ -73,49 +73,52 @@ Convention across protoBanana workflows:
 |---|---|---|
 | `3` | `KSampler` | Sampler — substitute `seed`, `steps`, `cfg` |
 | `4` | `LoadImage` | Init image (single-image workflows) — substitute `image` filename |
-| `5` | `EmptySD3LatentImage` / `EmptyLatentImage` | Canvas — substitute `width`, `height` |
+| `5` | `EmptyLatentImage` (or `EmptySD3LatentImage`) | Canvas (gen only) — substitute `width`, `height` |
 | `6` | `TextEncodeQwenImage21` | Prompt + `negative_prompt` + reference images via `images.image_N` slots (no node `7`) |
 | `8` | `VAEDecode` | Decoder (rarely substituted) |
 | `9` | `SaveImage` | Output (rarely substituted) |
 | `10`-`19` | (model-specific) | E.g. the BiRefNet node (`BiRefNetRMBG`) |
+| `20` | `LoadImageMask` / `ImagePadForOutpaint` | Mask source (inpaint) / canvas pad (outpaint — substitute margins) |
+| `30` | `SAM3Segment` | Region edit — substitute grounding `prompt` |
 | `24` | `VAEEncode` | Encode init image to latent (masked routes) |
 | `25` | `ImageScaleToTotalPixels` | Resize to ~1MP on a 32px grid (masked routes) |
 | `26` | `SetLatentNoiseMask` | Restrict denoise to the mask (masked routes) |
 | `37` | `UNETLoader` | The diffusion UNet |
 | `38` | `CLIPLoader` | Text encoder loader |
 | `39` | `VAELoader` | VAE loader |
+| `40` | `QwenImage21Cache` | Model cache wrapper between `37` and the sampler (image-input routes) |
 | `100`, `101`, … | `LoadImage` | Multi-ref slots (up to 10), wired to node `6`'s `images.image_1..N` |
 
 Following this convention means existing routes can sometimes work without
 modification; deviating means you write a new `substitute()`.
 
-#### Choosing between `TextEncodeQwenImageEditPlus` and `CLIPTextEncode`
+#### Conditioning: `TextEncodeQwenImage21` vs `CLIPTextEncode`
 
-For **anything that takes an input image and routes it into the model**
-(edit, multi-ref, region-edit, inpaint), use
-`TextEncodeQwenImageEditPlus` for both positive and negative encoders,
-and pipe the scaled input image into `image1` (and `image2`/`image3` for
-multi-ref). Both encoders should see the same image.
+Every shipped Qwen workflow (gen, edit, multi-ref, region edit, inpaint,
+outpaint) uses a single `TextEncodeQwenImage21` node `6`: it takes
+`prompt` and `negative_prompt`, and for **anything that takes an input
+image** the image goes into its `images.image_N` slots (`image_1` for
+edit; one per reference for multi-ref). Its outputs feed the sampler's
+`positive` (`6.0`) and `negative` (`6.1`); edit/multi-ref also take the
+latent from `6.2`. Background removal needs no text conditioning.
 
-For pure text-to-image (gen) or background-removal (which doesn't need
-text conditioning), use `CLIPTextEncode`.
-
-Why: `CLIPTextEncode` produces text-only conditioning. If you wire it
-into a workflow that loads an image and routes it through `VAEEncode →
-latent_image`, the input image has zero influence at `denoise=1.0`
-(the latent gets fully overwritten with noise). The model produces a
-fresh unrelated image. See [DECISIONS.md §0011](../DECISIONS.md) for
-the full incident.
+Why it matters: text-only conditioning (`CLIPTextEncode`) gives the input
+image zero influence at `denoise=1.0` if it's only routed through
+`VAEEncode → latent_image` — the latent gets fully overwritten with noise
+and the model produces a fresh unrelated image. See
+[DECISIONS.md §0011](../DECISIONS.md) for the original incident (on the
+retired Qwen-Image-Edit-2511 stack, where the fix was
+`TextEncodeQwenImageEditPlus`).
 
 Field-name mapping:
 
 | Encoder | Prompt field |
 |---|---|
-| `CLIPTextEncode` | `text` |
-| `TextEncodeQwenImageEditPlus` | `prompt` |
+| `CLIPTextEncode` (custom templates) | `text` |
+| `TextEncodeQwenImage21` | `prompt` (+ `negative_prompt`) |
 
-The `_set_prompt()` helper in `routes/edit.py` and `routes/multiref.py`
-writes to the right field based on the node's `class_type`.
+The `_set_prompt()` helpers in the routes write to the right field based
+on the node's `class_type`.
 
 ### Step 4: Test the JSON standalone
 
@@ -241,9 +244,10 @@ input image is loaded → scaled → VAE-encoded → `latent_image`, but with
 `denoise=1.0` that latent gets fully replaced with random noise. The
 model has no visual context.
 
-Fix: replace nodes 6 and 7 with `TextEncodeQwenImageEditPlus`, with the
-scaled image piped into `image1` on both. Run the e2e smoke test in
-[validating workflows](validating-workflows) to confirm.
+Fix: use a `TextEncodeQwenImage21` node `6` with the input image wired
+into `images.image_1` (see the shipped `qwen_image_edit_2_1.json`). Run
+the e2e smoke test in [validating workflows](validating-workflows) to
+confirm.
 
 ### Substitution doesn't take effect
 
@@ -256,12 +260,14 @@ Either:
 
 ### Multi-image workflow fails with one image
 
-Multi-ref workflows often require all input slots to have valid images,
-even if you're only using one. Either:
+The shipped multi-ref workflow has a single `LoadImage` node `100`; the
+route clones it per reference (`101`, …) and wires each into
+`images.image_N`, so there are no empty slots. Custom multi-ref
+templates with fixed slots may need all of them filled. Either:
 - Skip the multi-ref workflow when you have <2 images (the intent classifier
   routes you to single-EDIT in that case)
-- Or send a 1×1 transparent placeholder for empty slots (and adjust the
-  workflow to ignore alpha-only inputs)
+- Or follow the clone-node-`100` convention so slot count matches the
+  references sent
 
 ---
 
@@ -272,20 +278,22 @@ even if you're only using one. Either:
   "3": {
     "class_type": "KSampler",
     "inputs": {
-      "seed": 0, "steps": 20, "cfg": 4.0,
+      "seed": 0, "steps": 40, "cfg": 1.0,
       "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0,
       "model": ["37", 0],
       "positive": ["6", 0],
-      "negative": ["7", 0],
+      "negative": ["6", 1],
       "latent_image": ["5", 0]
     }
   },
   "5": {
-    "class_type": "EmptySD3LatentImage",
+    "class_type": "EmptyLatentImage",
     "inputs": { "width": 1024, "height": 1024, "batch_size": 1 }
   },
-  "6": { "class_type": "CLIPTextEncode", "inputs": { "text": "default", "clip": ["38", 0] } },
-  "7": { "class_type": "CLIPTextEncode", "inputs": { "text": "low quality", "clip": ["38", 0] } },
+  "6": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": { "prompt": "default", "negative_prompt": "", "resolution": 1024, "clip": ["38", 0] }
+  },
   "8": { "class_type": "VAEDecode", "inputs": { "samples": ["3", 0], "vae": ["39", 0] } },
   "9": { "class_type": "SaveImage", "inputs": { "filename_prefix": "out", "images": ["8", 0] } },
   "37": { "class_type": "UNETLoader", "inputs": { "unet_name": "your_model.safetensors", "weight_dtype": "default" } },
@@ -294,4 +302,6 @@ even if you're only using one. Either:
 }
 ```
 
-Use this as the starting template for any new generation-style workflow.
+Use this as the starting template for any new generation-style workflow
+(it mirrors the shipped `qwen_image_2_1.json`; the Turbo variant swaps the
+UNet and drops to 8 steps).

@@ -16,9 +16,9 @@ GEN — the specific ops (BGREMOVE/MULTIREF/REGION_EDIT/OUTPAINT/INPAINT)
 fire on high-confidence keywords and don't need second-guessing.
 
 The LM is asked to choose from the same Operation enum. Its decision
-overrides the keyword pick ONLY when it returns a more specific op;
-on any error or no-op it falls back to the keyword pick (which the
-caller still has).
+overrides the keyword pick whenever it returns a different op; on any
+error or no answer it falls back to the keyword pick (which the caller
+still has).
 
 Cached by ``(prompt, has_init_image, n_ref_images)`` for the lifetime
 of the process — an LM disambiguating "remove that thing" once should

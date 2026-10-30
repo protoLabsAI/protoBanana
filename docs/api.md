@@ -1,7 +1,8 @@
 # API
 
-> Client-facing reference. Three OpenAI-shape endpoints. Defaults shown
-> for each model alias.
+> Client-facing reference. Three OpenAI-shape endpoints (plus two read-only
+> protoBanana GETs: catalog + workflow inspector). Defaults shown for each
+> model alias.
 
 ---
 
@@ -69,6 +70,10 @@ curl -X POST http://your-gateway:4000/v1/images/edits \
 - `prompt` (string, required) — edit instruction
 - `image` (binary, required) — init image
 - `n`, `seed`, `negative_prompt` (same as generation)
+- Per-operation extras ride `extra_body`: `mask_image` (inpaint — PNG data
+  URL; the multipart `mask` field is dropped by LiteLLM), `grounding`
+  (region edit), `left`/`top`/`right`/`bottom` (outpaint). See the
+  curated catalog parameter table below.
 
 **Response:** same shape as generation (one or more `b64_json` images).
 
@@ -129,7 +134,7 @@ clients (Open WebUI, Slack, Discord, GitHub) display the image inline.
 
 ## Multimodal request examples
 
-### Multi-reference (2-3 images)
+### Multi-reference (2-10 images)
 
 ```json
 {
@@ -145,7 +150,8 @@ clients (Open WebUI, Slack, Discord, GitHub) display the image inline.
 }
 ```
 
-Returns one composed image.
+Returns one composed image. Up to 10 references on every path (the
+`-multiref` alias, and the chat agent's compose tool).
 
 ### Edit follow-up (chat history with prior assistant image)
 
@@ -190,7 +196,7 @@ how you configured `model_list`):
 | `protolabs/qwen-image-2-1-turbo` | `qwen_image_2_1_turbo` | gen | **Draft tier** — Qwen-Image-2.1 Turbo, 8 steps, ~9s warm at 1024² vs ~31s. For prototyping/iteration |
 | `protolabs/qwen-image-edit` | `qwen_image_edit_2_1` | edit | Direct edit (Qwen-Image-2.1 unified gen+edit model, ~38s warm) |
 | `protolabs/qwen-image-edit-turbo` | `qwen_image_edit_2_1_turbo` | edit | **Draft tier** edit — Qwen-Image-2.1 Turbo, ~10-12s warm |
-| `protolabs/qwen-image-chat` | (auto-routes per turn) | gen/edit/multiref/bgremove | **Default for chat clients** |
+| `protolabs/qwen-image-chat` | (auto-routes per turn) | gen/edit/multiref/bgremove/region_edit/outpaint | **Default for chat clients** |
 | `protolabs/qwen-image-multiref` | `multiref_qwen_image_2_1` | multiref | Native multi-ref compose (up to 10) |
 | `protolabs/qwen-image-bgremove` | `bgremove_birefnet` | bgremove | Direct sticker (commercial license) |
 | `protolabs/qwen-image-region-edit` | `region_edit_sam3_qwen_image_2_1` | region_edit | SAM-grounded single-object edit |
@@ -238,12 +244,16 @@ behind it do.
 ComfyUI processes one workflow at a time by default. Concurrent client
 requests queue server-side. Typical wait time at 1× concurrency:
 
-| Op | Cold load | Warm |
-|---|---|---|
-| Gen | ~30s | ~22s |
-| Edit | ~30s | ~25s |
-| Multi-ref (3 imgs) | ~40s | ~32s |
-| Bg remove | ~5-10s | ~3s |
+| Op | Warm (A6000, 1024²) |
+|---|---|
+| Gen | ~31s (Turbo ~9s) |
+| Edit | ~38s (Turbo ~10-12s) |
+| Multi-ref | ~40-45s |
+| Inpaint / outpaint | ~40s |
+| Region edit | ~45s |
+| Bg remove | ~3s |
+
+Add 5-10s for a cold model load.
 
 If you need true concurrency, run multiple ComfyUI instances on multiple
 GPUs and set up load balancing in front of the gateway.

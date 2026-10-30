@@ -4,7 +4,7 @@ Practical recipes for getting the most out of the gateway alias.
 
 ---
 
-## The three model aliases
+## The three main model aliases
 
 | Model | Endpoint | When to use |
 |---|---|---|
@@ -13,6 +13,10 @@ Practical recipes for getting the most out of the gateway alias.
 | **`protolabs/qwen-image-chat`** | `/v1/chat/completions` | The conversational UX. Multi-turn, multi-image, auto-routes between gen/edit/multiref/sticker. **Default for end users.** |
 
 If you're using Open WebUI or any chat UI: pick `protolabs/qwen-image-chat`.
+
+Each operation also has its own alias (`-multiref`, `-bgremove`,
+`-region-edit`, `-inpaint`, `-outpaint`, plus `-2-1-turbo` / `-edit-turbo`
+8-step draft tiers) — see [docs/api.md](docs/api.md).
 
 ---
 
@@ -39,8 +43,9 @@ If you're using Open WebUI or any chat UI: pick `protolabs/qwen-image-chat`.
 - `4:5` (Instagram portrait) → 1088×1360
 - (no keyword) → **1024×1024** default
 
-To override explicitly, pass `size` in the request body's `extra_body` or
-just say it (`"draw a cat in a hat, 16:9"` works).
+To override explicitly, pass `width` / `height` in the request body's
+`extra_body` (LiteLLM strips a top-level `size` before it reaches the
+provider) or just say it (`"draw a cat in a hat, 16:9"` works).
 
 ---
 
@@ -71,7 +76,7 @@ Edit instructions can be:
 
 > "Use this character and this style"
 
-Attach 2-3 images to a user message (Open WebUI's image upload button) +
+Attach 2+ images to a user message (Open WebUI's image upload button) +
 text describing how to combine them. Provider routes to MULTIREF.
 
 Examples:
@@ -82,9 +87,10 @@ Examples:
 | 2 images: scene + style ref | `"render the scene from image 1 in the style of image 2"` |
 | 3 images: character + outfit + setting | `"the character from image 1, wearing the outfit from image 2, in the setting from image 3"` |
 
-**Hard limit: 3 images.** The chat path collects at most 3 (the
-Qwen-Image-2.1 multiref route itself accepts up to 10). If you provide
-more, the provider takes the first 3 in document order.
+**Limit: 10 images.** Qwen-Image-2.1 takes references natively and the
+chat path collects up to 10 (`MAX_REFS`), newest first; anything older
+in the history is ignored. The chat agent's `multi_ref_compose` tool
+and `protolabs/qwen-image-multiref` share the same 10-image cap.
 
 **Tip:** match perspective and lighting across reference images for
 cleaner fusion.
@@ -108,19 +114,20 @@ also callable directly through the `protolabs/qwen-image-bgremove` alias.
 
 ---
 
-## Recipe 5 (Phase 4, queued) — region edit by text
+## Recipe 5 — region edit by text
 
 > "Change just the man's tie to red"
 
-Trigger patterns on a turn with an init image (Phase 4 ships this):
+Trigger patterns on a turn with an init image:
 
 - `"change the X to Y"` / `"change her X to Y"` / `"change his X to Y"`
 - `"replace the X with Y"` / `"replace her X"`
 - `"just the X"` / `"only the X"`
 
-Uses Florence-2 to find the bounding box from the text, SAM 2.1 for
-pixel-precise mask, Qwen-Image-Edit to inpaint that region only. The
-rest of the image is preserved.
+Uses SAM 3 to turn the text target into a pixel mask, then Qwen-Image-2.1
+repaints that region only. The rest of the image is preserved. Directly,
+call `protolabs/qwen-image-region-edit` with `extra_body.grounding`
+naming the object to segment.
 
 ---
 
@@ -145,7 +152,7 @@ Any mask routes to INPAINT regardless of which edit alias was called.
 
 ---
 
-## Recipe 7 (Phase 6, queued) — outpaint
+## Recipe 7 — outpaint
 
 > "Extend this scene to the left"
 
@@ -156,11 +163,14 @@ Trigger words on a turn with an init image:
 - `"outpaint to show more sky"`
 - `"uncrop"` / `"expand the image"`
 
+Directly, call `protolabs/qwen-image-outpaint` with pixel margins in
+`extra_body` (`left` / `top` / `right` / `bottom`; all zero pads 256 each).
+
 ---
 
 ## Negative prompts
 
-Default negative: `"low quality, blurry"`. Override via `extra_body.negative_prompt` if your client supports it.
+Default negative: `"low quality, blurry"`. Override via `extra_body.negative_prompt` if your client supports it — though it is inert on the shipped Qwen-Image-2.1 workflows, which run at cfg 1.
 
 ---
 
