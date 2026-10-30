@@ -152,9 +152,13 @@ def create_app() -> Any:
     from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
     from litellm.proxy.proxy_server import app
 
+    from protobanana.workflow_route import WORKFLOW_PATH, mount_workflows
+
     # LiteLLM mounts sub-routers and WebSocket/Mount objects that have no
     # `.path`; match defensively so the idempotency check works across proxy
     # versions rather than crashing on the first non-APIRoute entry.
     if not any(getattr(route, "path", None) == CATALOG_PATH for route in app.routes):
         mount_catalog(app, user_api_key_auth)
+    if not any(getattr(route, "path", None) == WORKFLOW_PATH for route in app.routes):
+        mount_workflows(app, user_api_key_auth)
     return app
