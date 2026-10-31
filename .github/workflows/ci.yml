@@ -1,0 +1,31 @@
+name: CI
+
+# Runs the test suite on every PR and on main. Until this existed, PRs here
+# merged with only the review checks (QA panel + protoReview) and no tests.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      # --frozen installs exactly uv.lock; --all-extras because the suite
+      # exercises the gradio app and LiteLLM proxy auth (prisma) too.
+      - name: Install
+        run: uv sync --frozen --all-extras
+      - name: Tests
+        run: uv run --frozen pytest -q
