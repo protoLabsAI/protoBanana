@@ -1,4 +1,5 @@
 {
+  "_doc": "Multi-reference composition with Qwen-Image 2.1. Reference images (node 100, cloned for each extra reference at run time) are encoded with the instruction by TextEncodeQwenImage21 (node 6), which also supplies the starting latent; 40 Euler steps at CFG 1. Filled per request: the references, prompt and negative_prompt, seed.",
   "100": {
     "class_type": "LoadImage",
     "inputs": {

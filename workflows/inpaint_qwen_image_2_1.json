@@ -1,4 +1,5 @@
 {
+  "_doc": "Mask inpainting with Qwen-Image 2.1. The mask (node 20, alpha channel) is grown 6px; the masked area is filled grey in the reference image so the model repaints only that region, sampled 40 steps under a latent noise mask, then composited back onto the untouched original. Filled per request: the image, the mask, prompt and negative_prompt, seed.",
   "4": {
     "class_type": "LoadImage",
     "inputs": {

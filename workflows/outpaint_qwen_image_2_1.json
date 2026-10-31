@@ -1,4 +1,5 @@
 {
+  "_doc": "Outpainting with Qwen-Image 2.1. Pads the image by the requested left/top/right/bottom margins with 24px feathering (node 20), repaints only the new border under its noise mask in 40 steps, and scales the result back to the padded size. Filled per request: the image, the four margins, prompt and negative_prompt, seed.",
   "4": {
     "class_type": "LoadImage",
     "inputs": {

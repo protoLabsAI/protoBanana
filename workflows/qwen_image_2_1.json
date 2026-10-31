@@ -1,4 +1,5 @@
 {
+  "_doc": "Text-to-image with Qwen-Image 2.1 (the Final tier). Loads the bf16 UNet, the Qwen3-VL 8B text encoder and the 2.1 VAE, then samples 40 Euler steps at CFG 1. Filled per request: prompt and negative_prompt (node 6), width and height (node 5), seed (node 3).",
   "3": {"inputs": {"seed": 0, "steps": 40, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0, "model": ["37", 0], "positive": ["6", 0], "negative": ["6", 1], "latent_image": ["5", 0]}, "class_type": "KSampler"},
   "5": {"inputs": {"width": 1024, "height": 1024, "batch_size": 1}, "class_type": "EmptyLatentImage"},
   "6": {"inputs": {"prompt": "a beautiful landscape", "negative_prompt": "", "resolution": 1024, "clip": ["38", 0]}, "class_type": "TextEncodeQwenImage21"},
