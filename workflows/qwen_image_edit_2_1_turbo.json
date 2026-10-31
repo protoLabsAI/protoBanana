@@ -1,4 +1,5 @@
 {
+  "_doc": "Fast instruction edit with the Qwen-Image 2.1 Turbo UNet (the Draft tier). Same graph as qwen_image_edit_2_1 but 8 Euler steps. Filled per request: the image (node 4), prompt and negative_prompt (node 6), seed (node 3).",
   "3": {"inputs": {"seed": 0, "steps": 8, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0, "model": ["40", 0], "positive": ["6", 0], "negative": ["6", 1], "latent_image": ["6", 2]}, "class_type": "KSampler"},
   "4": {"inputs": {"image": "init.png"}, "class_type": "LoadImage"},
   "6": {"inputs": {"prompt": "make the cat blue", "negative_prompt": "", "resolution": 1024, "clip": ["38", 0], "vae": ["39", 0], "images.image_1": ["4", 0]}, "class_type": "TextEncodeQwenImage21"},

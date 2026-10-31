@@ -1,4 +1,5 @@
 {
+  "_doc": "Region edit: SAM 3 (node 30) segments the region named by the grounding phrase, the mask is grown 8px, and Qwen-Image 2.1 repaints only that region from the edit instruction in 40 steps before compositing it back onto the original. Filled per request: the image, the grounding phrase, prompt and negative_prompt, seed.",
   "4": {
     "class_type": "LoadImage",
     "inputs": {
