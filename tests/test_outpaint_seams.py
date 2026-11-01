@@ -2,7 +2,7 @@
 
 import io
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from PIL import Image
@@ -60,8 +60,8 @@ def test_composite_preserves_centre_and_new_pixels():
     assert result.getpixel((31, 80)) == result.getpixel((32, 80)) == (210, 180, 160)
     assert result.getpixel((160, 80)) == (210, 180, 160)
     assert result.getpixel((35, 80)) != original.getpixel((3, 64))
-    with pytest.raises(ValueError, match="expected"):
-        outpaint.composite_original(outpaint._png(original), original, keep, pads)
+    wrong_size = outpaint._png(original)
+    assert outpaint.composite_original(wrong_size, original, keep, pads) == wrong_size
 
 
 @pytest.mark.asyncio
@@ -111,3 +111,43 @@ def test_live_metric_detects_boundary_steps():
 def test_feather_scales_with_canvas_even_when_source_is_unchanged():
     assert outpaint.blend_widths((1024, 1024), (64, 0, 64, 0)) == (64, 27)
     assert outpaint.blend_widths((1024, 1024), (512, 0, 512, 0)) == (64, 48)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mask_nodes", ["absent", "wrong_loader", "wrong_consumer", "both"])
+@pytest.mark.parametrize("output_size", [(153, 127), (160, 128)])
+async def test_custom_workflow_output_compatibility(mask_nodes, output_size):
+    template = LOADER.load(outpaint.DEFAULT_STEM)
+    if mask_nodes == "absent":
+        del template["31"]
+        template["26"]["inputs"]["mask"] = ["20", 1]
+    elif mask_nodes == "wrong_loader":
+        template["31"]["class_type"] = "LoadImage"
+    elif mask_nodes == "wrong_consumer":
+        template["26"]["class_type"] = "CustomMaskConsumer"
+    loader = Mock()
+    loader.load.return_value = template
+    client = AsyncMock()
+    client.upload_image.side_effect = ["init.png", "mask.png"]
+    client.submit_prompt.return_value = "pid"
+    # JPEG byte equality also catches accidental conversion to PNG.
+    buffer = io.BytesIO()
+    Image.new("RGB", output_size, (100, 110, 120)).save(buffer, format="JPEG")
+    generated = buffer.getvalue()
+    client.fetch_image_bytes.return_value = generated
+    original = Image.new("RGB", (128, 128), (40, 60, 80))
+    result = await outpaint.run(
+        client, loader, prompt="continue", init_image_bytes=outpaint._png(original),
+        left=32, workflow_stem="outpaint_custom",
+    )
+    loader.load.assert_called_once_with("outpaint_custom")
+    uses_overlap = mask_nodes == "both"
+    assert client.upload_image.await_count == (2 if uses_overlap else 1)
+    if not uses_overlap or output_size != (160, 128):
+        assert result == generated
+    else:
+        image = Image.open(io.BytesIO(result))
+        assert image.getpixel((96, 64)) == original.getpixel((64, 64))
+    if not uses_overlap:
+        workflow = client.submit_prompt.call_args.args[0]
+        assert workflow["20"]["inputs"]["feathering"] == outpaint.DEFAULT_FEATHERING

@@ -3,7 +3,9 @@
 Node 20 retains exact per-side padding. Node 31 loads a route-built noise
 mask (white = regenerate), consumed by node 26. After decode and the graph's
 resize, restore the original with a smooth feather entirely inside the overlap.
-Custom workflows without these mask nodes retain their existing substitution.
+Custom workflows without both mask nodes retain their substitution and output
+bytes. Outputs at other canvas sizes pass through without compositing because
+the original pixels cannot be aligned safely without a known canvas mapping.
 """
 
 from __future__ import annotations
@@ -129,13 +131,13 @@ def _png(image: Image.Image) -> bytes:
 
 def composite_original(generated: bytes, original: Image.Image, keep: Image.Image,
                        pads: tuple[int, int, int, int]) -> bytes:
-    """Restore source pixels only after the workflow has returned to full size."""
+    """Restore source pixels at full canvas size; pass other output sizes through."""
     left, top, right, bottom = pads
     with Image.open(io.BytesIO(generated)) as decoded:
         result = decoded.convert("RGB")
     expected = (original.width + left + right, original.height + top + bottom)
     if result.size != expected:
-        raise ValueError(f"outpaint returned {result.size}, expected {expected}")
+        return generated
     result.paste(original, (left, top), keep)
     return _png(result)
 
@@ -162,10 +164,17 @@ async def run(
         raise ValueError("outpaint requires at least one positive pad amount")
     pads = tuple(max(0, int(value)) for value in (left, top, right, bottom))
     left, top, right, bottom = pads
-    with Image.open(io.BytesIO(init_image_bytes)) as source:
-        original = ImageOps.exif_transpose(source).convert("RGB")
-    noise, keep = blend_masks(original.size, pads, feathering)
-    _, scaled_feather = blend_widths(original.size, pads, feathering)
+    template = loader.load(workflow_stem)
+    use_overlap = (
+        template.get("31", {}).get("class_type") == "LoadImageMask"
+        and template.get("26", {}).get("class_type") == "SetLatentNoiseMask"
+    )
+    scaled_feather = feathering
+    if use_overlap:
+        with Image.open(io.BytesIO(init_image_bytes)) as source:
+            original = ImageOps.exif_transpose(source).convert("RGB")
+        noise, keep = blend_masks(original.size, pads, feathering)
+        _, scaled_feather = blend_widths(original.size, pads, feathering)
     seed = seed if seed is not None else random.randint(0, 2**32 - 1)
 
     with trace_span(
@@ -176,9 +185,8 @@ async def run(
             init_image_bytes, filename="outpaint_init.png"
         )
 
-    template = loader.load(workflow_stem)
     mask_filename = None
-    if template.get("31", {}).get("class_type") == "LoadImageMask":
+    if use_overlap:
         mask_filename = await client.upload_image(_png(noise), filename="outpaint_mask.png")
     wf = substitute(
         template,
@@ -213,4 +221,6 @@ async def run(
 
     if img is None:
         raise RuntimeError(f"outpaint workflow {pid} produced no image outputs")
-    return composite_original(img, original, keep, pads)
+    if use_overlap:
+        return composite_original(img, original, keep, pads)
+    return img
