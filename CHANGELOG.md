@@ -5,6 +5,13 @@ SemVer.
 
 ## [Unreleased]
 
+### Fixed — outpaint boundary seams
+
+- Regenerate an overlap inside padded edges, scaling the overlap and feather
+  with image/canvas size. Composite original pixels back after decode and
+  resize through a smooth feather inside the overlap, preserving the centre
+  exactly and leaving unpadded sides out of the mask.
+
 ### Removed — Krea 2 identity edit
 
 - Dropped the `krea2_edit` route, its four `krea2_identity_edit*` workflows,
