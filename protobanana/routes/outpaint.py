@@ -1,30 +1,20 @@
-"""Outpaint via ImagePadForOutpaint. Workflow stem: `outpaint_qwen_image_2_1`.
+"""Outpaint with a regenerated overlap and a post-decode original-pixel composite.
 
-The agent says "extend left", "make this wider", "show more sky above"
-— the splitter in intents/keywords.py turns that into per-side padding
-amounts. ImagePadForOutpaint adds blank pixels in those directions and
-emits an edge mask covering ONLY the new area; a latent noise mask
-confines denoising to that mask, so the original image pixels pass
-through untouched.
-
-Convention (matches outpaint_qwen_image_2_1.json):
-  Node "4"  LoadImage               = init image filename
-  Node "20" ImagePadForOutpaint     = left/top/right/bottom + feathering
-  Node "25" ImageScaleToTotalPixels = padded image to ~1 MP, 32 px grid
-  Node "6"  TextEncodeQwenImage21   = prompt + negative + padded ref
-  Node "26" SetLatentNoiseMask      = edge mask from the pad
-  Node "3"  KSampler                = seed
-  Node "28" ImageScale              = back to the padded size (node "27")
-  Node "9"  SaveImage
-
-Default per-side amount = 256 px when "extend X" is named without a
-size; default feathering = 24 px (soft seam).
+Node 20 retains exact per-side padding. Node 31 loads a route-built noise
+mask (white = regenerate), consumed by node 26. After decode and the graph's
+resize, restore the original with a smooth feather entirely inside the overlap.
+Custom workflows without both mask nodes retain their substitution and output
+bytes. Outputs at other canvas sizes pass through without compositing because
+the original pixels cannot be aligned safely without a known canvas mapping.
 """
 
 from __future__ import annotations
 
+import io
 import random
 from typing import Any
+
+from PIL import Image, ImageChops, ImageOps
 
 from protobanana._tracing import trace_span
 from protobanana.client import ComfyUIClient
@@ -46,6 +36,7 @@ def substitute(
     right: int,
     bottom: int,
     feathering: int = DEFAULT_FEATHERING,
+    mask_filename: str | None = None,
 ) -> dict[str, Any]:
     """Substitute init filename + per-side padding + prompt + seed."""
     if "4" in workflow and workflow["4"].get("class_type") == "LoadImage":
@@ -58,6 +49,13 @@ def substitute(
         workflow["20"]["inputs"]["feathering"] = max(0, int(feathering))
     if "6" in workflow and workflow["6"].get("class_type") == "TextEncodeQwenImage21":
         workflow["6"]["inputs"]["negative_prompt"] = negative_prompt
+    if workflow.get("31", {}).get("class_type") == "LoadImageMask":
+        if mask_filename is not None:
+            workflow["31"]["inputs"]["image"] = mask_filename
+        if workflow.get("26", {}).get("class_type") == "SetLatentNoiseMask":
+            workflow["26"]["inputs"]["mask"] = (
+                ["31", 0] if mask_filename is not None else ["20", 1]
+            )
     _set_prompt(workflow, "6", prompt)
     _set_prompt(workflow, "7", negative_prompt)
     if "3" in workflow and workflow["3"].get("class_type") == "KSampler":
@@ -75,6 +73,73 @@ def _set_prompt(workflow: dict[str, Any], node_id: str, text: str) -> None:
         node["inputs"]["prompt"] = text
     elif ct == "CLIPTextEncode":
         node["inputs"]["text"] = text
+
+
+def blend_widths(size: tuple[int, int], pads: tuple[int, int, int, int],
+                 feathering: int = DEFAULT_FEATHERING) -> tuple[int, int]:
+    """Scale overlap with source and feather with canvas, bounded for small inputs.
+
+    The legacy feathering argument is a minimum, capped inside the overlap. At 1024 square
+    with 512 on left/right this gives a 64px overlap and a 48px composite ramp.
+    The remaining overlap is a buffer before the noise mask reaches zero.
+    """
+    width, height = size
+    left, top, right, bottom = pads
+    overlap = max(1, min(width, height) // 16)
+    canvas_edge = max(width + left + right, height + top + bottom)
+    feather = min(max(1, overlap * 3 // 4),
+                  max(1, int(feathering), round(canvas_edge * 3 / 128)))
+    return overlap, feather
+
+
+def blend_masks(size: tuple[int, int], pads: tuple[int, int, int, int],
+                feathering: int = DEFAULT_FEATHERING) -> tuple[Image.Image, Image.Image]:
+    """Return padded denoise mask and original-sized keep alpha.
+
+    Only padded sides contribute a ramp. Min combines the keep ramps at
+    corners without introducing a hard diagonal or touching unpadded edges.
+    """
+    width, height = size
+    left, top, right, bottom = pads
+    overlap, feather = blend_widths(size, pads, feathering)
+
+    def ramp(length: int, before: int, after: int, begin: int, end: int) -> list[int]:
+        values = []
+        for i in range(length):
+            distance = min(i if before else length, length - 1 - i if after else length)
+            t = min(1.0, max(0.0, (distance - begin) / max(1, end - begin)))
+            values.append(round(255 * t * t * (3 - 2 * t)))
+        return values
+
+    def keep(begin: int, end: int) -> Image.Image:
+        x = Image.new("L", (width, 1))
+        x.putdata(ramp(width, left, right, begin, end))
+        y = Image.new("L", (1, height))
+        y.putdata(ramp(height, top, bottom, begin, end))
+        return ImageChops.darker(x.resize(size), y.resize(size))
+
+    noise = Image.new("L", (width + left + right, height + top + bottom), 255)
+    noise.paste(ImageOps.invert(keep(feather, overlap)), (left, top))
+    return noise, keep(0, feather)
+
+
+def _png(image: Image.Image) -> bytes:
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def composite_original(generated: bytes, original: Image.Image, keep: Image.Image,
+                       pads: tuple[int, int, int, int]) -> bytes:
+    """Restore source pixels at full canvas size; pass other output sizes through."""
+    left, top, right, bottom = pads
+    with Image.open(io.BytesIO(generated)) as decoded:
+        result = decoded.convert("RGB")
+    expected = (original.width + left + right, original.height + top + bottom)
+    if result.size != expected:
+        return generated
+    result.paste(original, (left, top), keep)
+    return _png(result)
 
 
 async def run(
@@ -97,6 +162,19 @@ async def run(
         raise ValueError("outpaint requires an init image")
     if (left + top + right + bottom) <= 0:
         raise ValueError("outpaint requires at least one positive pad amount")
+    pads = tuple(max(0, int(value)) for value in (left, top, right, bottom))
+    left, top, right, bottom = pads
+    template = loader.load(workflow_stem)
+    use_overlap = (
+        template.get("31", {}).get("class_type") == "LoadImageMask"
+        and template.get("26", {}).get("class_type") == "SetLatentNoiseMask"
+    )
+    scaled_feather = feathering
+    if use_overlap:
+        with Image.open(io.BytesIO(init_image_bytes)) as source:
+            original = ImageOps.exif_transpose(source).convert("RGB")
+        noise, keep = blend_masks(original.size, pads, feathering)
+        _, scaled_feather = blend_widths(original.size, pads, feathering)
     seed = seed if seed is not None else random.randint(0, 2**32 - 1)
 
     with trace_span(
@@ -107,14 +185,18 @@ async def run(
             init_image_bytes, filename="outpaint_init.png"
         )
 
+    mask_filename = None
+    if use_overlap:
+        mask_filename = await client.upload_image(_png(noise), filename="outpaint_mask.png")
     wf = substitute(
-        loader.load(workflow_stem),
+        template,
         prompt=prompt,
         negative_prompt=negative_prompt,
         seed=int(seed),
         image_filename=init_filename,
         left=left, top=top, right=right, bottom=bottom,
-        feathering=feathering,
+        feathering=scaled_feather,
+        mask_filename=mask_filename,
     )
 
     with trace_span(
@@ -139,4 +221,6 @@ async def run(
 
     if img is None:
         raise RuntimeError(f"outpaint workflow {pid} produced no image outputs")
+    if use_overlap:
+        return composite_original(img, original, keep, pads)
     return img

@@ -53,6 +53,9 @@ def workflow_slots(workflow: dict[str, Any], op: str) -> list[dict[str, Any]]:
             add("20", ("LoadImageMask",), "image")
         elif op == "outpaint":
             add("20", ("ImagePadForOutpaint",), "left", "top", "right", "bottom", "feathering")
+            add("31", ("LoadImageMask",), "image")
+            if workflow.get("31", {}).get("class_type") == "LoadImageMask":
+                add("26", ("SetLatentNoiseMask",), "mask")
         elif op == "region_edit":
             add("30", ("SAM3Segment",), "prompt")
     return slots

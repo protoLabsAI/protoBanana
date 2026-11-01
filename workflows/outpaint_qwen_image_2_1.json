@@ -1,5 +1,5 @@
 {
-  "_doc": "Outpainting with Qwen-Image 2.1. Pads the image by the requested left/top/right/bottom margins with 24px feathering (node 20), repaints only the new border under its noise mask in 40 steps, and scales the result back to the padded size. Filled per request: the image, the four margins, prompt and negative_prompt, seed.",
+  "_doc": "Outpaint with exact per-side padding. The route uploads a scaled overlap noise mask at node 31 and restores original pixels after decode/resize using a feather inside that overlap. Without a supplied mask, substitute retains node 20 mask fallback.",
   "4": {
     "class_type": "LoadImage",
     "inputs": {
@@ -186,5 +186,12 @@
       "dtype": "default"
     },
     "class_type": "QwenImage21Cache"
+  },
+  "31": {
+    "class_type": "LoadImageMask",
+    "inputs": {
+      "image": "init.png",
+      "channel": "red"
+    }
   }
 }
