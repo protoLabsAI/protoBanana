@@ -408,6 +408,7 @@ class ProtoBananaProvider(CustomLLM):
                             left=left, top=top, right=right, bottom=bottom,
                             negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
                             seed=opts.get("seed"),
+                            margin_guard=opts.get("outpaint_margin_guard", True),
                             workflow_stem=workflow_stem,
                             timeout_s=max(timeout_s, 240.0),
                         )
@@ -624,6 +625,7 @@ class ProtoBananaProvider(CustomLLM):
                         init_image_bytes=init_images[0],
                         left=left, top=top, right=right, bottom=bottom,
                         seed=opts.get("seed"),
+                        margin_guard=opts.get("outpaint_margin_guard", True),
                         timeout_s=max(timeout_s, 240.0),
                     )
                 elif op == Operation.EDIT:

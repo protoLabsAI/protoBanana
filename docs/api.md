@@ -74,6 +74,11 @@ curl -X POST http://your-gateway:4000/v1/images/edits \
   URL; the multipart `mask` field is dropped by LiteLLM), `grounding`
   (region edit), `left`/`top`/`right`/`bottom` (outpaint). See the
   curated catalog parameter table below.
+- `extra_body.outpaint_margin_guard` (boolean, default `true`) — on the
+  outpaint alias, retry suspicious grey or magenta/black margins once, then
+  raise if still suspicious. Set `false` for intentional flat grey edges or
+  pixel-noise artwork. Colour alone does not trigger the guard. A retry uses
+  `(seed + 1) % 2**32`, preserving deterministic seed selection.
 
 **Response:** same shape as generation (one or more `b64_json` images).
 

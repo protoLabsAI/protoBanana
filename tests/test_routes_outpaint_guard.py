@@ -1,9 +1,7 @@
 """Output guard: detect/retry/raise on unpainted-grey or magenta-noise margins.
 
-ComfyUI intermittently returns an outpaint decode where a padded margin is the
-flat pad-grey fill (never regenerated) or saturated-magenta noise (a NaN / bf16
-overflow in the VAE decode of wide 2:1 latents). Both are seed-dependent, so the
-route reseeds once and raises if the second decode is also broken.
+Synthetic examples cover suspicious margins, legitimate colour content, and
+an explicit opt-out for artwork that intentionally matches the heuristic.
 """
 
 import io
@@ -124,9 +122,11 @@ async def test_broken_margin_retries_with_new_seed_then_succeeds(bad):
 
 
 @pytest.mark.asyncio
-async def test_persistent_breakage_raises_a_clear_error():
+@pytest.mark.parametrize("bad", ["grey", "magenta"])
+async def test_persistent_breakage_raises_a_clear_error(bad):
     original = Image.new("RGB", (1024, 1024), (40, 60, 80))
-    client, seeds = _mock_client([_grey_margin("right"), _grey_margin("right")])
+    image = _grey_margin("right") if bad == "grey" else _magenta_margins()
+    client, seeds = _mock_client([image, image])
 
     with pytest.raises(RuntimeError, match="broken margins after a reseed retry"):
         await _run(client, original)
@@ -151,3 +151,72 @@ async def test_unexpected_output_size_passes_through_without_guard():
 
     assert result == odd
     assert client.submit_prompt.await_count == 1
+
+
+@pytest.mark.parametrize("fill", [(255, 0, 255), (220, 30, 210), PAD_GREY, (129, 127, 128)])
+@pytest.mark.asyncio
+async def test_legitimate_colour_returns_without_retry(fill):
+    original = Image.new("RGB", (1024, 1024), fill)
+    client, seeds = _mock_client([_canvas(fill)])
+    await _run(client, original)
+    assert seeds == [7]
+
+
+def test_coherent_neon_objects_are_not_noise():
+    image = _canvas((0, 0, 0))
+    image.paste((255, 0, 255), (64, 64, 400, 900))
+    assert outpaint.margin_metrics(image, PADS)["left"]["magenta_share"] > 0.02
+    assert outpaint.margin_failures(image, PADS) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("image", [_grey_margin(), _magenta_margins()])
+async def test_guard_can_be_disabled_for_intentional_artwork(image):
+    client, seeds = _mock_client([image])
+    result = await outpaint.run(
+        client, LOADER, prompt="abstract artwork", seed=7,
+        init_image_bytes=outpaint._png(Image.new("RGB", (1024, 1024))),
+        left=512, right=512, margin_guard=False,
+    )
+    assert seeds == [7]
+    assert Image.open(io.BytesIO(result)).getpixel((1800, 500)) == image.getpixel((1800, 500))
+
+
+@pytest.mark.asyncio
+async def test_retry_seed_is_reproducible():
+    for _ in range(2):
+        client, seeds = _mock_client([_grey_margin(), _canvas()])
+        await _run(client, Image.new("RGB", (1024, 1024)))
+        assert seeds == [7, 8]
+
+
+@pytest.mark.parametrize("side", range(4))
+def test_grey_boundary_detection_on_each_side(side):
+    pads = tuple(16 if i == side else 0 for i in range(4))
+    image = Image.new("RGB", (80, 80), CLEAN_FILL)
+    name, box = next(iter(outpaint._margin_boxes(image.size, pads).items()))
+    image.paste(PAD_GREY, box)
+    assert outpaint.margin_failures(image, pads)[0].startswith(name)
+    assert outpaint.margin_failures(Image.new("RGB", (80, 80), PAD_GREY), pads) == []
+
+
+@pytest.mark.parametrize("bad", ["grey", "magenta"])
+def test_live_evaluate_merges_margin_failures_even_without_seam(monkeypatch, bad):
+    from scripts import check_outpaint_seams as probe
+
+    monkeypatch.setattr(probe, "seam_metrics", lambda image: {"passed": True})
+    image = _grey_margin() if bad == "grey" else _magenta_margins()
+    report = probe.evaluate(image)
+    assert not report["passed"]
+    assert report["margin_failures"]
+    assert report["margins"]
+
+
+def test_live_evaluate_keeps_seam_failure_and_accepts_healthy_image(monkeypatch):
+    from scripts import check_outpaint_seams as probe
+
+    assert probe.evaluate(_canvas())["passed"]
+    monkeypatch.setattr(probe, "seam_metrics", lambda image: {"passed": False})
+    report = probe.evaluate(_canvas())
+    assert not report["passed"]
+    assert not report["margin_failures"]

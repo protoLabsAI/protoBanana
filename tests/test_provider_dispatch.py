@@ -356,3 +356,15 @@ def test_coerce_image_to_bytes_allow_path_false_rejects_path(tmp_path):
     import base64
     data_url = "data:image/png;base64," + base64.b64encode(b"ok").decode()
     assert ProtoBananaProvider._coerce_image_to_bytes(data_url, allow_path=False) == b"ok"
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_outpaint_margin_guard_option_reaches_route(provider, monkeypatch, enabled):
+    _patch_routes(monkeypatch)
+    route = AsyncMock(return_value=b"fake-output")
+    monkeypatch.setattr("protobanana.provider.outpaint.run", route)
+    _run(provider.aimage_edit(
+        model="outpaint_qwen_image_2_1", prompt="abstract grey artwork",
+        image=b"fake-input", optional_params={"outpaint_margin_guard": enabled},
+    ))
+    assert route.await_args.kwargs["margin_guard"] is enabled

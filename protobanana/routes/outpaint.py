@@ -7,12 +7,10 @@ Custom workflows without both mask nodes retain their substitution and output
 bytes. Outputs at other canvas sizes pass through without compositing because
 the original pixels cannot be aligned safely without a known canvas mapping.
 
-Output guard: ComfyUI occasionally returns a decode where a padded margin is
-left as the flat pad-grey fill (the sampler never regenerated it) or is
-saturated-magenta/black per-pixel noise (a NaN / bf16 overflow in the VAE decode
-of wide 2:1 latents). Both are seed-dependent and clear on a reseed, so `run`
-inspects each padded margin, retries once with a fresh seed, and raises rather
-than returning a broken banner. See `margin_failures`.
+Output guard: flat pad-grey with an abrupt boundary and pixel-scale magenta/
+black noise are suspicious, not proof of corruption. Retry once with a new
+seed. Callers can disable the heuristic for intentional artwork matching it.
+The underlying ComfyUI cause remains unconfirmed.
 """
 
 from __future__ import annotations
@@ -32,12 +30,11 @@ DEFAULT_FEATHERING = 24
 
 # ImagePadForOutpaint fills the new border pixels with mid-grey (0x808080).
 # An unpainted margin is that exact fill: near-zero deviation from grey AND
-# near-zero variance (a real scene extension always carries some texture).
+# near-zero variance plus an abrupt boundary with the adjacent scene.
 PAD_GREY_LEVEL = 128
 GREY_MAD_TOL = 2.0   # mean |pixel - 128| per channel at/below this => pad fill
 GREY_STD_TOL = 2.0   # per-channel stddev at/below this => flat, not a scene
-# A healthy extension has essentially no fully-saturated magenta; a NaN decode
-# fills the margin with it. Flag when the share crosses this fraction.
+# Colour alone is not corruption: also require pixel-scale black transitions.
 MAGENTA_SHARE_TOL = 0.02
 _MAGENTA_HI = 180    # R and B at/above this ...
 _MAGENTA_LO = 75     # ... with G at/below this => a saturated-magenta pixel
@@ -179,7 +176,7 @@ def _margin_boxes(size: tuple[int, int],
 
 
 def _saturated_magenta_share(region: Image.Image) -> float:
-    """Fraction of pixels that are high-R, high-B, low-G (the NaN-decode tell)."""
+    """Fraction of pixels that are high-R, high-B, low-G (a colour metric, not proof of corruption)."""
     pixels = region.width * region.height
     if not pixels:
         return 0.0
@@ -190,6 +187,49 @@ def _saturated_magenta_share(region: Image.Image) -> float:
     # multiply acts as logical AND on 0/255 masks (255*255/255 == 255).
     magenta = ImageChops.multiply(ImageChops.multiply(r_hi, b_hi), g_lo)
     return magenta.histogram()[255] / pixels
+
+
+def _magenta_noise_share(region: Image.Image) -> float:
+    """Fraction of neighbour pairs alternating magenta and near-black.
+
+    Coherent neon objects have few such pairs; per-pixel noise has many.
+    """
+    r, g, b = region.split()
+    magenta = ImageChops.multiply(
+        ImageChops.multiply(r.point(lambda v: 255 if v >= _MAGENTA_HI else 0),
+                            b.point(lambda v: 255 if v >= _MAGENTA_HI else 0)),
+        g.point(lambda v: 255 if v <= _MAGENTA_LO else 0))
+    dark = ImageChops.lighter(ImageChops.lighter(r, g), b).point(
+        lambda v: 255 if v <= 75 else 0)
+    hits = pairs = 0
+    w, h = region.size
+    for dx, dy in ((1, 0), (0, 1)):
+        if w <= dx or h <= dy:
+            continue
+        first, second = (0, 0, w - dx, h - dy), (dx, dy, w, h)
+        transitions = ImageChops.lighter(
+            ImageChops.multiply(magenta.crop(first), dark.crop(second)),
+            ImageChops.multiply(dark.crop(first), magenta.crop(second)))
+        hits += transitions.histogram()[255]
+        pairs += (w - dx) * (h - dy)
+    return hits / pairs if pairs else 0.0
+
+
+def _boundary_jump(image: Image.Image, pads: tuple[int, int, int, int], side: str) -> float:
+    """Mean adjacent-pixel difference at the inner margin boundary."""
+    w, h = image.size
+    left, top, right, bottom = pads
+    boxes = {
+        "left": ((left - 1, top, left, h - bottom), (left, top, left + 1, h - bottom)),
+        "right": ((w - right - 1, top, w - right, h - bottom),
+                  (w - right, top, w - right + 1, h - bottom)),
+        "top": ((left, top - 1, w - right, top), (left, top, w - right, top + 1)),
+        "bottom": ((left, h - bottom - 1, w - right, h - bottom),
+                   (left, h - bottom, w - right, h - bottom + 1)),
+    }
+    first, second = boxes[side]
+    delta = ImageChops.difference(image.crop(first), image.crop(second))
+    return sum(ImageStat.Stat(delta).mean) / 3
 
 
 def margin_metrics(image: Image.Image,
@@ -205,6 +245,8 @@ def margin_metrics(image: Image.Image,
             "grey_mad": sum(ImageStat.Stat(diff).mean) / 3,
             "grey_std": sum(ImageStat.Stat(region).stddev) / 3,
             "magenta_share": _saturated_magenta_share(region),
+            "magenta_noise_share": _magenta_noise_share(region),
+            "boundary_jump": _boundary_jump(image, pads, side),
         }
     return report
 
@@ -215,20 +257,22 @@ def margin_failures(image: Image.Image, pads: tuple[int, int, int, int], *,
                     magenta_share_tol: float = MAGENTA_SHARE_TOL) -> list[str]:
     """Human-readable descriptions of broken padded margins; empty = healthy.
 
-    Flags a margin as unpainted when it is a flat patch of the pad-grey fill,
-    and as corrupt when a large share of it is saturated-magenta noise.
+    Flags flat pad-grey with an abrupt boundary or pixel-scale magenta/black
+    noise. Smooth grey backdrops and coherent magenta content are allowed.
     """
     problems: list[str] = []
     for side, m in margin_metrics(image, pads).items():
-        if m["grey_mad"] <= grey_mad_tol and m["grey_std"] <= grey_std_tol:
+        if (m["grey_mad"] <= grey_mad_tol and m["grey_std"] <= grey_std_tol
+                and m["boundary_jump"] > 12.0):
             problems.append(
                 f"{side} margin is unpainted pad grey "
                 f"(mean |dev| {m['grey_mad']:.1f}, stddev {m['grey_std']:.1f})"
             )
-        if m["magenta_share"] >= magenta_share_tol:
+        if (m["magenta_share"] >= magenta_share_tol
+                and m["magenta_noise_share"] >= 0.25):
             problems.append(
                 f"{side} margin is {m['magenta_share']:.0%} saturated-magenta "
-                f"noise (VAE decode overflow)"
+                f"noise (suspected decode artifact)"
             )
     return problems
 
@@ -248,6 +292,7 @@ async def run(
     seed: int | None = None,
     workflow_stem: str = DEFAULT_STEM,
     timeout_s: float = 240.0,
+    margin_guard: bool = True,
 ) -> bytes:
     if not init_image_bytes:
         raise ValueError("outpaint requires an init image")
@@ -288,7 +333,7 @@ async def run(
     attempts = 2 if use_overlap else 1
     failures: list[str] = []
     for attempt in range(attempts):
-        attempt_seed = base_seed if attempt == 0 else random.randint(0, 2**32 - 1)
+        attempt_seed = base_seed if attempt == 0 else (base_seed + 1) % 2**32
         wf = substitute(
             template,
             prompt=prompt,
@@ -330,11 +375,12 @@ async def run(
             output = decoded.convert("RGB")
         if output.size != expected:
             # Unknown canvas mapping — cannot align margins; pass bytes through.
-            return composite_original(img, original, keep, pads)
+            return img
 
-        failures = margin_failures(output, pads)
+        failures = margin_failures(output, pads) if margin_guard else []
         if not failures:
-            return composite_original(img, original, keep, pads)
+            output.paste(original, (left, top), keep)
+            return _png(output)
         with trace_span(
             "outpaint.margin_guard_failed",
             metadata={"attempt": attempt, "seed": attempt_seed},

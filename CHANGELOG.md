@@ -30,16 +30,15 @@ SemVer.
   exactly and leaving unpadded sides out of the mask.
 - Preserve custom workflow output bytes when overlap-mask nodes are absent
   or the returned image does not match the padded canvas dimensions.
-- Output guard for intermittent broken outpaints. ComfyUI occasionally returned
-  a decode with an unpainted margin (left as the flat pad-grey fill, a hard
-  vertical edge) or saturated-magenta/black per-pixel noise (a NaN / bf16
-  overflow in the VAE decode of wide 2:1 latents) — both seed-dependent. The
-  route now inspects each padded margin after decode, retries once with a fresh
-  seed, and raises a clear error instead of returning the broken banner. The
-  per-call-unique upload names and SaveImage cache nonce already rule out the
-  stale-filename cache suspects, so the remaining failures are narrowed to the
-  sampler/VAE and cleared by the reseed. `scripts/check_outpaint_seams.py` now
-  reports both failure modes alongside the seam metric.
+- Guard suspicious outpaint margins and retry once using `(seed + 1) % 2**32`.
+  Grey detection now requires an abrupt boundary; magenta detection requires
+  pixel-scale alternation with black, preserving coherent fuchsia/neon content
+  and continuous grey backgrounds. `extra_body.outpaint_margin_guard=false`
+  on the outpaint alias allows intentional artwork matching these heuristics.
+  The live seam probe reports both signatures. Unique upload filenames and
+  SaveImage nonces protect against filename reuse, but the reported ComfyUI
+  sampler/decode failure has not been reproduced here; VAE overflow remains
+  an unconfirmed hypothesis.
 
 ### Removed — Krea 2 identity edit
 

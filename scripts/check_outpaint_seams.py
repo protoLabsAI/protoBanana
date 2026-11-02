@@ -8,11 +8,12 @@ No gateway configured: skip without reading the photo or making a request.
 
 Three failure modes are checked, all against the fixed left=512/right=512 banner:
   * boundary seams   - a step in per-column difference at x=512 / x=1536
-  * unpainted margin - a left/right 512px margin left as the flat pad-grey fill
-  * magenta noise    - a margin filled with saturated-magenta decode garbage
+  * unpainted margin - flat pad-grey with an abrupt boundary to the scene
+  * magenta noise    - pixel-scale saturated-magenta/black alternation
 
 The margin checks reuse protobanana.routes.outpaint so the live probe and the
-route's own output guard share one definition of "broken".
+route's own output guard share one heuristic definition of "suspicious". These metrics do not diagnose
+the underlying sampler or decoder cause.
 """
 
 import argparse
