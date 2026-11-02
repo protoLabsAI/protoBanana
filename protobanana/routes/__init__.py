@@ -11,6 +11,7 @@ Adding a new operation = new module + intent keyword + workflow JSON.
 
 from protobanana.routes import (
     bgremove,
+    bgswap,
     edit,
     gen,
     inpaint,
@@ -21,6 +22,7 @@ from protobanana.routes import (
 
 __all__ = [
     "bgremove",
+    "bgswap",
     "edit",
     "gen",
     "inpaint",

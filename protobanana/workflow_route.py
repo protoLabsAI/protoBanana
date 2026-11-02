@@ -58,6 +58,8 @@ def workflow_slots(workflow: dict[str, Any], op: str) -> list[dict[str, Any]]:
                 add("26", ("SetLatentNoiseMask",), "mask")
         elif op == "region_edit":
             add("30", ("SAM3Segment",), "prompt")
+        elif op == "bgswap":
+            add("30", ("SAM3Segment",), "prompt")
     return slots
 
 

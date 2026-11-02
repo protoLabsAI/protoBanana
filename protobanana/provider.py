@@ -48,6 +48,7 @@ from protobanana.intents.keywords import (
 from protobanana.intents.llm import classify_operation_lm
 from protobanana.routes import (
     bgremove,
+    bgswap,
     edit,
     gen,
     inpaint,
@@ -88,7 +89,7 @@ DEFAULT_TIMEOUT_S = float(os.environ.get("COMFYUI_TIMEOUT", "180"))
 
 # Ordered prefixes are shared by edit dispatch and the curated catalog.
 _STEM_OPERATIONS = (
-    ("bgremove_", "bgremove"), ("multiref_", "multiref"),
+    ("bgremove_", "bgremove"), ("bgswap_", "bgswap"), ("multiref_", "multiref"),
     ("region_edit_", "region_edit"), ("outpaint_", "outpaint"),
     ("inpaint_", "inpaint"),
     ("qwen_image_edit_", "edit"), ("qwen_image_", "gen"),
@@ -241,6 +242,8 @@ class ProtoBananaProvider(CustomLLM):
                 workflow_stem = inpaint.DEFAULT_STEM
         elif route_name == "bgremove":
             route_name = "bgremove"
+        elif route_name == "bgswap":
+            route_name = "bgswap"
         elif route_name == "multiref":
             route_name = "multiref"
         elif route_name == "region_edit":
@@ -283,6 +286,21 @@ class ProtoBananaProvider(CustomLLM):
                 else:
                     grounding_text, edit_prompt = prompt, prompt
 
+        # bgswap keeps the subject's real pixels and regenerates only the
+        # background from `prompt` (the scene description). The subject phrase
+        # is the SAM 3 grounding — supplied the same way region_edit takes its
+        # grounding text (extra_body `subject`, or region_edit's `grounding`
+        # channel). The prompt describes the new scene, not the subject, so
+        # there is nothing reliable to extract from it; default to "the
+        # product" when no phrase is given.
+        subject_phrase: Optional[str] = None
+        if route_name == "bgswap":
+            subject_phrase = (
+                opts.get("subject") or _kwargs.get("subject")
+                or opts.get("grounding") or _kwargs.get("grounding")
+                or bgswap.DEFAULT_SUBJECT
+            )
+
         trace_metadata = {
             "model": model,
             "workflow_stem": workflow_stem,
@@ -291,6 +309,8 @@ class ProtoBananaProvider(CustomLLM):
         if route_name == "region_edit":
             trace_metadata["grounding_text"] = grounding_text or ""
             trace_metadata["edit_prompt"] = _truncate(edit_prompt or "", 200)
+        if route_name == "bgswap":
+            trace_metadata["subject_phrase"] = subject_phrase or ""
         with trace_span(
             "protobanana.aimage_edit",
             input={
@@ -344,6 +364,19 @@ class ProtoBananaProvider(CustomLLM):
                             edit_prompt=edit_prompt,  # type: ignore[arg-type]
                             init_image_bytes=init_bytes,
                             negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
+                            seed=opts.get("seed"),
+                            workflow_stem=workflow_stem,
+                            timeout_s=max(timeout_s, 240.0),
+                        )
+                    elif route_name == "bgswap":
+                        img_bytes = await bgswap.run(
+                            cy,
+                            self._loader,
+                            scene_prompt=prompt,
+                            subject_phrase=subject_phrase,  # type: ignore[arg-type]
+                            init_image_bytes=init_bytes,
+                            negative_prompt=opts.get("negative_prompt")
+                            or "low quality, blurry, distorted, clutter",
                             seed=opts.get("seed"),
                             workflow_stem=workflow_stem,
                             timeout_s=max(timeout_s, 240.0),

@@ -1,0 +1,359 @@
+{
+  "_doc": "Background swap: keep the product's real pixels, replace only the scene behind it. SAM 3 (node 30) segments the subject named by the subject phrase; AILab_SDMatte (50) refines that into a matte; the contour is smoothed and thresholded at 0.75 (54) so no sliver of background stays attached; InvertMask (32) + GrowMask 6 (31) make the background region, grown slightly into the subject. Qwen-Image 2.1 inpaints only that region from the scene prompt (grey-filled reference, 40 steps, denoise 1.0), the decode is scaled back to the original size (60/61), and the ORIGINAL subject is composited back over it through a lightly feathered matte (54 -> 56 -> 57) so the real subject edge is preserved and only the background is generated. Filled per request: the image (4), the subject phrase (30), the scene prompt and negative_prompt (6), the seed (3).",
+  "4": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "init.png"
+    }
+  },
+  "30": {
+    "class_type": "SAM3Segment",
+    "inputs": {
+      "image": [
+        "4",
+        0
+      ],
+      "prompt": "the product",
+      "output_mode": "Merged",
+      "confidence_threshold": 0.3,
+      "device": "GPU"
+    }
+  },
+  "50": {
+    "class_type": "AILab_SDMatte",
+    "inputs": {
+      "image": [
+        "4",
+        0
+      ],
+      "model": "SDMatte_plus",
+      "device": "GPU",
+      "process_res": 1024,
+      "mask": [
+        "30",
+        1
+      ]
+    }
+  },
+  "51": {
+    "class_type": "MaskToImage",
+    "inputs": {
+      "mask": [
+        "50",
+        1
+      ]
+    }
+  },
+  "52": {
+    "class_type": "ImageBlur",
+    "inputs": {
+      "image": [
+        "51",
+        0
+      ],
+      "blur_radius": 5,
+      "sigma": 2.5
+    }
+  },
+  "53": {
+    "class_type": "ImageToMask",
+    "inputs": {
+      "image": [
+        "52",
+        0
+      ],
+      "channel": "red"
+    }
+  },
+  "54": {
+    "class_type": "ThresholdMask",
+    "inputs": {
+      "mask": [
+        "53",
+        0
+      ],
+      "value": 0.75
+    }
+  },
+  "55": {
+    "class_type": "MaskToImage",
+    "inputs": {
+      "mask": [
+        "54",
+        0
+      ]
+    }
+  },
+  "56": {
+    "class_type": "ImageBlur",
+    "inputs": {
+      "image": [
+        "55",
+        0
+      ],
+      "blur_radius": 2,
+      "sigma": 1.0
+    }
+  },
+  "57": {
+    "class_type": "ImageToMask",
+    "inputs": {
+      "image": [
+        "56",
+        0
+      ],
+      "channel": "red"
+    }
+  },
+  "32": {
+    "class_type": "InvertMask",
+    "inputs": {
+      "mask": [
+        "54",
+        0
+      ]
+    }
+  },
+  "31": {
+    "class_type": "GrowMask",
+    "inputs": {
+      "mask": [
+        "32",
+        0
+      ],
+      "expand": 6,
+      "tapered_corners": true
+    }
+  },
+  "25": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 1.05,
+      "resolution_steps": 32,
+      "image": [
+        "4",
+        0
+      ]
+    }
+  },
+  "27": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": [
+        "25",
+        0
+      ]
+    }
+  },
+  "28": {
+    "class_type": "EmptyImage",
+    "inputs": {
+      "width": [
+        "27",
+        0
+      ],
+      "height": [
+        "27",
+        1
+      ],
+      "batch_size": 1,
+      "color": 8421504
+    }
+  },
+  "29": {
+    "class_type": "ImageCompositeMasked",
+    "inputs": {
+      "destination": [
+        "25",
+        0
+      ],
+      "source": [
+        "28",
+        0
+      ],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": [
+        "31",
+        0
+      ]
+    }
+  },
+  "6": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "prompt": "the scene description",
+      "negative_prompt": "low quality, blurry, distorted, clutter",
+      "resolution": 0,
+      "clip": [
+        "38",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "images.image_1": [
+        "29",
+        0
+      ]
+    }
+  },
+  "24": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "25",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
+    }
+  },
+  "26": {
+    "class_type": "SetLatentNoiseMask",
+    "inputs": {
+      "samples": [
+        "24",
+        0
+      ],
+      "mask": [
+        "31",
+        0
+      ]
+    }
+  },
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 0,
+      "steps": 40,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": [
+        "40",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "6",
+        1
+      ],
+      "latent_image": [
+        "26",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
+    }
+  },
+  "60": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "8",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": [
+        "61",
+        0
+      ],
+      "height": [
+        "61",
+        1
+      ],
+      "crop": "disabled"
+    }
+  },
+  "61": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": [
+        "4",
+        0
+      ]
+    }
+  },
+  "23": {
+    "class_type": "ImageCompositeMasked",
+    "inputs": {
+      "destination": [
+        "60",
+        0
+      ],
+      "source": [
+        "4",
+        0
+      ],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": [
+        "57",
+        0
+      ]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "protobanana-bgswap",
+      "images": [
+        "23",
+        0
+      ]
+    }
+  },
+  "37": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_2.1_bf16.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "38": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image"
+    }
+  },
+  "39": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "40": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "37",
+        0
+      ],
+      "device": "auto",
+      "dtype": "default"
+    }
+  }
+}

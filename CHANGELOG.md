@@ -5,6 +5,23 @@ SemVer.
 
 ## [Unreleased]
 
+### Added — bgswap (replace a product photo's background, keep the subject)
+
+- New workflow `bgswap_sam3_sdmatte_qwen_image_2_1` + route `routes/bgswap.py`.
+  Staging a product photo with the plain edit route re-renders the whole image,
+  so the product drifts (straight mug sides taper, speckles move). bgswap
+  replaces only the background: SAM 3 segments the subject named by the subject
+  phrase, `AILab_SDMatte` refines it into a matte, the contour is thresholded at
+  0.75 so no background sliver stays attached, and Qwen-Image 2.1 inpaints the
+  `InvertMask` + `GrowMask 6` background region (grey-filled reference, 40 steps,
+  denoise 1.0). The ORIGINAL subject is composited back over the decode through a
+  lightly feathered matte, so the real subject edge survives and only the
+  background is generated. Verified against ComfyUI (ava :8189, ~42s/image).
+- The provider dispatches `bgswap_*` stems through the image-edit path. The
+  subject phrase comes from `extra_body.subject` (or region_edit's `grounding`
+  channel) and defaults to `the product`; the request `prompt` is the scene
+  description. New catalog alias `protolabs/qwen-image-bgswap`.
+
 ### Fixed — outpaint boundary seams
 
 - Regenerate an overlap inside padded edges, scaling the overlap and feather

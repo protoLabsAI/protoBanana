@@ -12,6 +12,7 @@ from protobanana.catalog import ALIASES, build_catalog, create_app
 from protobanana.provider import dispatch_operation
 from protobanana.routes import (
     bgremove,
+    bgswap,
     edit,
     gen,
     inpaint,
@@ -25,7 +26,7 @@ from protobanana.workflows.loader import WorkflowLoader
 WORKFLOWS = Path(__file__).resolve().parents[1] / "workflows"
 STEMS = sorted(p.stem for p in WORKFLOWS.glob("*.json"))
 ROUTES = {module.__name__.rsplit(".", 1)[-1]: module for module in
-          (bgremove, edit, gen, inpaint, multiref, outpaint, region_edit)}
+          (bgremove, bgswap, edit, gen, inpaint, multiref, outpaint, region_edit)}
 
 
 @pytest.fixture
@@ -71,6 +72,7 @@ def test_slots_match_actual_substitute_writes(stem):
     values = dict(prompt="positive", negative_prompt="negative", seed=123,
                   width=768, height=512, image_filename="source.png",
                   mask_filename="mask.png", grounding_text="hat", edit_prompt="red hat",
+                  subject_phrase="the mug", scene_prompt="a marble counter",
                   left=16, top=32, right=48, bottom=64, feathering=8,
                   ref_filenames=[f"ref-{i}.png" for i in range(multiref.MAX_REFS)])
     substitute = ROUTES[dispatch_operation(stem)].substitute
