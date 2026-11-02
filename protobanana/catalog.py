@@ -20,6 +20,7 @@ ALIASES = {
     "qwen_image_edit_2_1_turbo": "protolabs/qwen-image-edit-turbo",
     "bgremove_birefnet": "protolabs/qwen-image-bgremove",
     "bgremove_rmbg2": "protolabs/qwen-image-bgremove-rmbg",
+    "bgswap_sam3_sdmatte_qwen_image_2_1": "protolabs/qwen-image-bgswap",
     "inpaint_qwen_image_2_1": "protolabs/qwen-image-inpaint",
     "outpaint_qwen_image_2_1": "protolabs/qwen-image-outpaint",
     "region_edit_sam3_qwen_image_2_1": "protolabs/qwen-image-region-edit",
@@ -67,6 +68,12 @@ def _params(op: str) -> dict[str, Any]:
         required.append("mask_image")
     elif op == "region_edit":
         props["grounding"] = {"type": "string", "description": "Object to segment"}
+    elif op == "bgswap":
+        # The subject whose real pixels are kept; everything else (the
+        # background) is regenerated from `prompt`. Optional — defaults to
+        # "the product" server-side when omitted.
+        props["subject"] = {"type": "string", "default": "the product",
+                            "description": "Subject to keep; its real pixels are preserved"}
     elif op == "outpaint":
         for side in ("left", "top", "right", "bottom"):
             props[side] = {"type": "integer", "minimum": 0, "default": 0,
@@ -119,7 +126,8 @@ def build_catalog(workflows_dir: Path | None = None) -> dict[str, Any]:
             "licence": {"id": licence, "non_commercial": licence in {"CC-BY-NC-4.0", "Qwen-Research"}},
             "typical_latency_s": (9 if op == "gen" else 11) if draft else
                                  {"gen": 31, "edit": 38, "multiref": 40, "bgremove": 3,
-                                  "inpaint": 40, "outpaint": 40, "region_edit": 45}[op],
+                                  "inpaint": 40, "outpaint": 40, "region_edit": 45,
+                                  "bgswap": 42}[op],
         })
     return {"version": 1, "workflows_hash": digest.hexdigest(), "aliases": entries}
 
