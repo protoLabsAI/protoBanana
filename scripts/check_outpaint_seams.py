@@ -5,6 +5,14 @@ Set GATEWAY_URL (including /v1) and GATEWAY_API_KEY, then run:
   python scripts/check_outpaint_seams.py path/to/fixed-photo.png
 Use the same photo for comparisons; its SHA256 is printed with the metrics.
 No gateway configured: skip without reading the photo or making a request.
+
+Three failure modes are checked, all against the fixed left=512/right=512 banner:
+  * boundary seams   - a step in per-column difference at x=512 / x=1536
+  * unpainted margin - a left/right 512px margin left as the flat pad-grey fill
+  * magenta noise    - a margin filled with saturated-magenta decode garbage
+
+The margin checks reuse protobanana.routes.outpaint so the live probe and the
+route's own output guard share one definition of "broken".
 """
 
 import argparse
@@ -14,10 +22,20 @@ import io
 import json
 import os
 import statistics
+import sys
 from pathlib import Path
 
 import httpx
 from PIL import Image, ImageChops, ImageStat
+
+# Allow `python scripts/check_outpaint_seams.py` (sys.path[0] == scripts/) to
+# import the package; under pytest the repo root is already importable.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from protobanana.routes import outpaint  # noqa: E402
+
+# The live probe always outpaints left=512/right=512 on a 1024-square photo.
+LIVE_PADS = (512, 0, 512, 0)
 
 
 def seam_metrics(image: Image.Image) -> dict:
@@ -35,6 +53,15 @@ def seam_metrics(image: Image.Image) -> dict:
     return {"baseline_median_dx": baseline, "seam_mean_dx": seams,
             "ratios": [s / baseline if baseline else None for s in seams],
             "passed": all(s <= 1.5 * baseline for s in seams)}
+
+
+def evaluate(image: Image.Image) -> dict:
+    """Combine seam + margin checks into one report (gateway-independent)."""
+    seams = seam_metrics(image)
+    margins = outpaint.margin_metrics(image, LIVE_PADS)
+    margin_failures = outpaint.margin_failures(image, LIVE_PADS)
+    return {**seams, "margins": margins, "margin_failures": margin_failures,
+            "passed": seams["passed"] and not margin_failures}
 
 
 def main():
@@ -64,7 +91,7 @@ def main():
     output = base64.b64decode(response.json()["data"][0]["b64_json"])
     args.output.write_bytes(output)
     with Image.open(io.BytesIO(output)) as image:
-        metrics = seam_metrics(image)
+        metrics = evaluate(image)
     print(json.dumps({"input_sha256": hashlib.sha256(photo).hexdigest(), "seed": 7,
                       **metrics}, indent=2))
     return 0 if metrics["passed"] else 1

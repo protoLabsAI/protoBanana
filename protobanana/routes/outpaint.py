@@ -6,6 +6,13 @@ resize, restore the original with a smooth feather entirely inside the overlap.
 Custom workflows without both mask nodes retain their substitution and output
 bytes. Outputs at other canvas sizes pass through without compositing because
 the original pixels cannot be aligned safely without a known canvas mapping.
+
+Output guard: ComfyUI occasionally returns a decode where a padded margin is
+left as the flat pad-grey fill (the sampler never regenerated it) or is
+saturated-magenta/black per-pixel noise (a NaN / bf16 overflow in the VAE decode
+of wide 2:1 latents). Both are seed-dependent and clear on a reseed, so `run`
+inspects each padded margin, retries once with a fresh seed, and raises rather
+than returning a broken banner. See `margin_failures`.
 """
 
 from __future__ import annotations
@@ -14,7 +21,7 @@ import io
 import random
 from typing import Any
 
-from PIL import Image, ImageChops, ImageOps
+from PIL import Image, ImageChops, ImageOps, ImageStat
 
 from protobanana._tracing import trace_span
 from protobanana.client import ComfyUIClient
@@ -22,6 +29,18 @@ from protobanana.workflows.loader import WorkflowLoader
 
 DEFAULT_STEM = "outpaint_qwen_image_2_1"
 DEFAULT_FEATHERING = 24
+
+# ImagePadForOutpaint fills the new border pixels with mid-grey (0x808080).
+# An unpainted margin is that exact fill: near-zero deviation from grey AND
+# near-zero variance (a real scene extension always carries some texture).
+PAD_GREY_LEVEL = 128
+GREY_MAD_TOL = 2.0   # mean |pixel - 128| per channel at/below this => pad fill
+GREY_STD_TOL = 2.0   # per-channel stddev at/below this => flat, not a scene
+# A healthy extension has essentially no fully-saturated magenta; a NaN decode
+# fills the margin with it. Flag when the share crosses this fraction.
+MAGENTA_SHARE_TOL = 0.02
+_MAGENTA_HI = 180    # R and B at/above this ...
+_MAGENTA_LO = 75     # ... with G at/below this => a saturated-magenta pixel
 
 
 def substitute(
@@ -142,6 +161,78 @@ def composite_original(generated: bytes, original: Image.Image, keep: Image.Imag
     return _png(result)
 
 
+def _margin_boxes(size: tuple[int, int],
+                  pads: tuple[int, int, int, int]) -> dict[str, tuple[int, int, int, int]]:
+    """Crop box (left, upper, right, lower) for each padded side of the canvas."""
+    width, height = size
+    left, top, right, bottom = pads
+    boxes: dict[str, tuple[int, int, int, int]] = {}
+    if left > 0:
+        boxes["left"] = (0, 0, left, height)
+    if right > 0:
+        boxes["right"] = (width - right, 0, width, height)
+    if top > 0:
+        boxes["top"] = (0, 0, width, top)
+    if bottom > 0:
+        boxes["bottom"] = (0, height - bottom, width, height)
+    return boxes
+
+
+def _saturated_magenta_share(region: Image.Image) -> float:
+    """Fraction of pixels that are high-R, high-B, low-G (the NaN-decode tell)."""
+    pixels = region.width * region.height
+    if not pixels:
+        return 0.0
+    r, g, b = region.split()
+    r_hi = r.point(lambda v: 255 if v >= _MAGENTA_HI else 0)
+    b_hi = b.point(lambda v: 255 if v >= _MAGENTA_HI else 0)
+    g_lo = g.point(lambda v: 255 if v <= _MAGENTA_LO else 0)
+    # multiply acts as logical AND on 0/255 masks (255*255/255 == 255).
+    magenta = ImageChops.multiply(ImageChops.multiply(r_hi, b_hi), g_lo)
+    return magenta.histogram()[255] / pixels
+
+
+def margin_metrics(image: Image.Image,
+                   pads: tuple[int, int, int, int]) -> dict[str, dict[str, float]]:
+    """Per-side pad-grey deviation / variance and saturated-magenta share."""
+    image = image.convert("RGB")
+    grey = Image.new("RGB", (1, 1), (PAD_GREY_LEVEL,) * 3)
+    report: dict[str, dict[str, float]] = {}
+    for side, box in _margin_boxes(image.size, pads).items():
+        region = image.crop(box)
+        diff = ImageChops.difference(region, grey.resize(region.size))
+        report[side] = {
+            "grey_mad": sum(ImageStat.Stat(diff).mean) / 3,
+            "grey_std": sum(ImageStat.Stat(region).stddev) / 3,
+            "magenta_share": _saturated_magenta_share(region),
+        }
+    return report
+
+
+def margin_failures(image: Image.Image, pads: tuple[int, int, int, int], *,
+                    grey_mad_tol: float = GREY_MAD_TOL,
+                    grey_std_tol: float = GREY_STD_TOL,
+                    magenta_share_tol: float = MAGENTA_SHARE_TOL) -> list[str]:
+    """Human-readable descriptions of broken padded margins; empty = healthy.
+
+    Flags a margin as unpainted when it is a flat patch of the pad-grey fill,
+    and as corrupt when a large share of it is saturated-magenta noise.
+    """
+    problems: list[str] = []
+    for side, m in margin_metrics(image, pads).items():
+        if m["grey_mad"] <= grey_mad_tol and m["grey_std"] <= grey_std_tol:
+            problems.append(
+                f"{side} margin is unpainted pad grey "
+                f"(mean |dev| {m['grey_mad']:.1f}, stddev {m['grey_std']:.1f})"
+            )
+        if m["magenta_share"] >= magenta_share_tol:
+            problems.append(
+                f"{side} margin is {m['magenta_share']:.0%} saturated-magenta "
+                f"noise (VAE decode overflow)"
+            )
+    return problems
+
+
 async def run(
     client: ComfyUIClient,
     loader: WorkflowLoader,
@@ -186,41 +277,70 @@ async def run(
         )
 
     mask_filename = None
+    expected = None
     if use_overlap:
         mask_filename = await client.upload_image(_png(noise), filename="outpaint_mask.png")
-    wf = substitute(
-        template,
-        prompt=prompt,
-        negative_prompt=negative_prompt,
-        seed=int(seed),
-        image_filename=init_filename,
-        left=left, top=top, right=right, bottom=bottom,
-        feathering=scaled_feather,
-        mask_filename=mask_filename,
+        expected = (original.width + left + right, original.height + top + bottom)
+
+    # Only the overlap path can locate margins (it knows the canvas mapping),
+    # so only it gets the reseed retry; everything else keeps single-shot.
+    base_seed = int(seed)
+    attempts = 2 if use_overlap else 1
+    failures: list[str] = []
+    for attempt in range(attempts):
+        attempt_seed = base_seed if attempt == 0 else random.randint(0, 2**32 - 1)
+        wf = substitute(
+            template,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            seed=attempt_seed,
+            image_filename=init_filename,
+            left=left, top=top, right=right, bottom=bottom,
+            feathering=scaled_feather,
+            mask_filename=mask_filename,
+        )
+
+        with trace_span(
+            "comfyui.submit",
+            metadata={
+                "workflow_stem": workflow_stem,
+                "left": left, "top": top, "right": right, "bottom": bottom,
+                "feathering": feathering,
+                "seed": attempt_seed,
+                "attempt": attempt,
+            },
+        ) as submit_span:
+            pid = await client.submit_prompt(wf)
+            submit_span.update(metadata={"prompt_id": pid})
+
+        with trace_span("comfyui.wait_for_completion", metadata={"prompt_id": pid}):
+            history = await client.wait_for_completion(pid, timeout_s=timeout_s)
+
+        with trace_span("comfyui.fetch_image", metadata={"prompt_id": pid}) as fetch_span:
+            img = await client.fetch_image_bytes(history)
+            if img is not None:
+                fetch_span.update(metadata={"size_bytes": len(img)})
+
+        if img is None:
+            raise RuntimeError(f"outpaint workflow {pid} produced no image outputs")
+        if not use_overlap:
+            return img
+
+        with Image.open(io.BytesIO(img)) as decoded:
+            output = decoded.convert("RGB")
+        if output.size != expected:
+            # Unknown canvas mapping — cannot align margins; pass bytes through.
+            return composite_original(img, original, keep, pads)
+
+        failures = margin_failures(output, pads)
+        if not failures:
+            return composite_original(img, original, keep, pads)
+        with trace_span(
+            "outpaint.margin_guard_failed",
+            metadata={"attempt": attempt, "seed": attempt_seed},
+        ) as guard_span:
+            guard_span.update(metadata={"failures": failures})
+
+    raise RuntimeError(
+        "outpaint produced broken margins after a reseed retry: " + "; ".join(failures)
     )
-
-    with trace_span(
-        "comfyui.submit",
-        metadata={
-            "workflow_stem": workflow_stem,
-            "left": left, "top": top, "right": right, "bottom": bottom,
-            "feathering": feathering,
-            "seed": int(seed),
-        },
-    ) as submit_span:
-        pid = await client.submit_prompt(wf)
-        submit_span.update(metadata={"prompt_id": pid})
-
-    with trace_span("comfyui.wait_for_completion", metadata={"prompt_id": pid}):
-        history = await client.wait_for_completion(pid, timeout_s=timeout_s)
-
-    with trace_span("comfyui.fetch_image", metadata={"prompt_id": pid}) as fetch_span:
-        img = await client.fetch_image_bytes(history)
-        if img is not None:
-            fetch_span.update(metadata={"size_bytes": len(img)})
-
-    if img is None:
-        raise RuntimeError(f"outpaint workflow {pid} produced no image outputs")
-    if use_overlap:
-        return composite_original(img, original, keep, pads)
-    return img
