@@ -368,3 +368,57 @@ def test_outpaint_margin_guard_option_reaches_route(provider, monkeypatch, enabl
         image=b"fake-input", optional_params={"outpaint_margin_guard": enabled},
     ))
     assert route.await_args.kwargs["margin_guard"] is enabled
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("false", False), ("False", False), ("0", False), ("off", False), ("no", False),
+    ("true", True), ("1", True), ("on", True),
+    (0, False), (1, True),
+])
+def test_outpaint_margin_guard_string_flag_is_coerced(provider, monkeypatch, raw, expected):
+    """Multipart form fields arrive as strings; 'false' must disable the guard,
+    not be treated as truthy."""
+    _patch_routes(monkeypatch)
+    route = AsyncMock(return_value=b"fake-output")
+    monkeypatch.setattr("protobanana.provider.outpaint.run", route)
+    _run(provider.aimage_edit(
+        model="outpaint_qwen_image_2_1", prompt="abstract grey artwork",
+        image=b"fake-input", optional_params={"outpaint_margin_guard": raw},
+    ))
+    assert route.await_args.kwargs["margin_guard"] is expected
+
+
+def test_outpaint_margin_guard_defaults_on_when_absent(provider, monkeypatch):
+    _patch_routes(monkeypatch)
+    route = AsyncMock(return_value=b"fake-output")
+    monkeypatch.setattr("protobanana.provider.outpaint.run", route)
+    _run(provider.aimage_edit(
+        model="outpaint_qwen_image_2_1", prompt="continue the scene",
+        image=b"fake-input", optional_params={"left": 512, "right": 512},
+    ))
+    assert route.await_args.kwargs["margin_guard"] is True
+
+
+def test_outpaint_margin_guard_falls_back_to_extra_kwargs(provider, monkeypatch):
+    """When LiteLLM lands the flag in **kwargs rather than optional_params, the
+    opts-then-kwargs lookup (mirroring _pad) still picks it up."""
+    _patch_routes(monkeypatch)
+    route = AsyncMock(return_value=b"fake-output")
+    monkeypatch.setattr("protobanana.provider.outpaint.run", route)
+    _run(provider.aimage_edit(
+        model="outpaint_qwen_image_2_1", prompt="abstract grey artwork",
+        image=b"fake-input", outpaint_margin_guard="false",
+    ))
+    assert route.await_args.kwargs["margin_guard"] is False
+
+
+@pytest.mark.parametrize("value, default, expected", [
+    (None, True, True), (None, False, False),
+    (True, False, True), (False, True, False),
+    ("false", True, False), ("TRUE", False, True),
+    ("gibberish", True, True), ("gibberish", False, False),
+    (1, False, True), (0, True, False),
+])
+def test_as_bool_coercion(value, default, expected):
+    from protobanana.provider import _as_bool
+    assert _as_bool(value, default) is expected

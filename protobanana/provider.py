@@ -86,6 +86,38 @@ log.setLevel(logging.INFO)
 DEFAULT_COMFYUI_BASE = os.environ.get("COMFYUI_BASE_URL", "http://protolabs:8188")
 DEFAULT_TIMEOUT_S = float(os.environ.get("COMFYUI_TIMEOUT", "180"))
 
+# Multipart `/v1/images/edits` form fields arrive as strings, so an extra_body
+# flag like `outpaint_margin_guard=false` reaches the provider as the string
+# "false" — truthy under a bare check. Coerce the usual string/int spellings.
+_FALSE_TOKENS = frozenset({"false", "0", "no", "off", "none", ""})
+_TRUE_TOKENS = frozenset({"true", "1", "yes", "on"})
+
+
+def _as_bool(value: Any, default: bool = True) -> bool:
+    """Coerce an extra_body / multipart flag to a bool; None -> default."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        token = value.strip().lower()
+        if token in _FALSE_TOKENS:
+            return False
+        if token in _TRUE_TOKENS:
+            return True
+        return default
+    return bool(value)
+
+
+def _opt_bool(opts: dict, kwargs: dict, name: str, default: bool = True) -> bool:
+    """Look up a boolean flag in optional_params, then extra kwargs (like _pad)."""
+    value = opts.get(name) if opts else None
+    if value is None:
+        value = kwargs.get(name) if kwargs else None
+    return _as_bool(value, default)
+
 
 # Ordered prefixes are shared by edit dispatch and the curated catalog.
 _STEM_OPERATIONS = (
@@ -408,7 +440,7 @@ class ProtoBananaProvider(CustomLLM):
                             left=left, top=top, right=right, bottom=bottom,
                             negative_prompt=opts.get("negative_prompt") or "low quality, blurry",
                             seed=opts.get("seed"),
-                            margin_guard=opts.get("outpaint_margin_guard", True),
+                            margin_guard=_opt_bool(opts, _kwargs, "outpaint_margin_guard"),
                             workflow_stem=workflow_stem,
                             timeout_s=max(timeout_s, 240.0),
                         )
@@ -625,7 +657,7 @@ class ProtoBananaProvider(CustomLLM):
                         init_image_bytes=init_images[0],
                         left=left, top=top, right=right, bottom=bottom,
                         seed=opts.get("seed"),
-                        margin_guard=opts.get("outpaint_margin_guard", True),
+                        margin_guard=_opt_bool(opts, _kwargs, "outpaint_margin_guard"),
                         timeout_s=max(timeout_s, 240.0),
                     )
                 elif op == Operation.EDIT:
