@@ -5,6 +5,13 @@ SemVer.
 
 ## [Unreleased]
 
+### Fixed — ComfyUI input upload isolation
+
+- Every image upload uses a per-call UUID filename to prevent concurrent
+  requests from loading each other's inputs (#64). Regression coverage checks
+  multipart filenames, ComfyUI's reported-name fallback, and propagation into
+  every uploading route's workflow, including inpaint and outpaint masks.
+
 ### Added — bgswap (replace a product photo's background, keep the subject)
 
 - New workflow `bgswap_sam3_sdmatte_qwen_image_2_1` + route `routes/bgswap.py`.

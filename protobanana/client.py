@@ -56,7 +56,10 @@ class ComfyUIClient:
     async def upload_image(self, image_bytes: bytes, filename: str = "init.png") -> str:
         """POST to /upload/image; returns the stored filename for use in LoadImage.
 
-        Every upload gets a per-call unique name. Callers pass fixed names
+        Every upload gets a per-call unique name, retaining the caller's stem
+        and extension for readability. Use the returned name in workflows:
+        ComfyUI may report a different name from the one sent in the upload.
+        Callers pass fixed names
         ("init.png", "ref_1.png"), and with overwrite on, two concurrent
         requests shared one input file: the second upload replaced the first
         before its LoadImage ran, so one caller's edit rendered another
