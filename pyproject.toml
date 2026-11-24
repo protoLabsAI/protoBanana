@@ -22,10 +22,8 @@ classifiers = [
 dependencies = [
     "litellm>=1.83",
     "httpx>=0.27",
-    # multiref.run concatenates supplied references into a single grid
-    # image before submitting to ComfyUI — TextEncodeQwenImageEditPlus
-    # overwhelmingly weights image1 in practice, so feeding refs as
-    # one composite is the only way they actually contribute.
+    # inpaint.normalize_mask converts grayscale masks to OpenAI-convention
+    # RGBA before upload (ComfyUI loads alpha-less masks as all-zero).
     "pillow>=10",
 ]
 
